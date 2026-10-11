@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import subprocess
+
 from jarvis.owner_policy import OWNER_TRUST_POLICY, PROTECTED_PATHS, PROJECT_SCOPE
 from jarvis.self_development import (
+    SelfDevelopmentManager,
     SelfDevelopmentState,
     is_allowed_path,
     redact_source,
@@ -84,3 +87,41 @@ def test_self_development_state_enforces_24_hour_cooldown(tmp_path):
     assert run_id is not None
     assert state.reserve(cooldown_hours=24) is None
     state.finish(run_id, "no_change", "No patch")
+
+
+def test_recovery_refuses_to_switch_to_main_with_uncommitted_patch(monkeypatch):
+    manager = object.__new__(SelfDevelopmentManager)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args == ["git", "branch", "--show-current"]:
+            return subprocess.CompletedProcess(args, 0, "jarvis/self-dev-test\n", "")
+        if args == ["git", "status", "--porcelain"]:
+            return subprocess.CompletedProcess(args, 0, "M  tests/test_agent.py\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(manager, "_run", fake_run)
+
+    assert manager._return_to_main_if_clean("jarvis/self-dev-test") is False
+    assert ["git", "switch", "main"] not in calls
+
+
+def test_recovery_switches_to_main_only_when_expected_branch_is_clean(monkeypatch):
+    manager = object.__new__(SelfDevelopmentManager)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args == ["git", "branch", "--show-current"]:
+            return subprocess.CompletedProcess(args, 0, "jarvis/self-dev-test\n", "")
+        if args == ["git", "status", "--porcelain"]:
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if args == ["git", "switch", "main"]:
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(manager, "_run", fake_run)
+
+    assert manager._return_to_main_if_clean("jarvis/self-dev-test") is True
+    assert calls[-1] == ["git", "switch", "main"]

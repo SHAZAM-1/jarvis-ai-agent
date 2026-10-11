@@ -204,6 +204,17 @@ class SelfDevelopmentManager:
             )
         return result.stdout.strip()
 
+    def _return_to_main_if_clean(self, branch: str) -> bool:
+        """Return to main only if the expected branch is active and the tree is clean."""
+        current = self._run(["git", "branch", "--show-current"])
+        if current.returncode != 0 or current.stdout.strip() != branch:
+            return False
+        status = self._run(["git", "status", "--porcelain"])
+        if status.returncode != 0 or status.stdout.strip():
+            return False
+        switched = self._run(["git", "switch", "main"])
+        return switched.returncode == 0
+
     def _preflight(self) -> None:
         if not (self.root / ".git").exists():
             raise SelfDevelopmentError("Repository root is not a Git checkout.")
@@ -415,11 +426,22 @@ class SelfDevelopmentManager:
             return f"Self-improvement merged after green CI: {proposal['summary']} — {pr_url}"
         except SelfDevelopmentError as exc:
             self.state.finish(run_id, "rejected", str(exc))
-            if branch:
-                self._run(["git", "switch", "main"])
-            return f"Self-development stopped safely: {exc}"
+            recovery_note = ""
+            if branch and not self._return_to_main_if_clean(branch):
+                recovery_note = (
+                    " Could not safely return to main; inspect Git status and the active "
+                    "branch before continuing. No reset or clean was performed."
+                )
+            return f"Self-development stopped safely: {exc}.{recovery_note}"
         except Exception as exc:
             self.state.finish(run_id, "failed", type(exc).__name__)
-            if branch:
-                self._run(["git", "switch", "main"])
-            return f"Self-development failed safely ({type(exc).__name__}); no unsafe recovery was attempted."
+            recovery_note = ""
+            if branch and not self._return_to_main_if_clean(branch):
+                recovery_note = (
+                    " Could not safely return to main; inspect Git status and the active "
+                    "branch before continuing. No reset or clean was performed."
+                )
+            return (
+                f"Self-development failed safely ({type(exc).__name__}); "
+                f"no unsafe recovery was attempted.{recovery_note}"
+            )
