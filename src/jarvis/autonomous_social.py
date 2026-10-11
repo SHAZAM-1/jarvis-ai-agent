@@ -11,6 +11,7 @@ from jarvis.moltbook import (
     MAX_COMMENT_LENGTH,
     MAX_POSTS,
     MoltbookClient,
+    contains_link,
 )
 from jarvis.social_state import SocialState
 
@@ -53,7 +54,7 @@ def parse_engagement_decision(raw: str, posts: list[dict[str, str]]) -> dict[str
     cleaned = content.strip()
     if not 40 <= len(cleaned) <= MAX_COMMENT_LENGTH:
         return None
-    if _URL_RE.search(cleaned) or _CREDENTIAL_RE.search(cleaned):
+    if contains_link(cleaned) or _CREDENTIAL_RE.search(cleaned):
         return None
     if cleaned.casefold().strip(" .!?") in _GENERIC_REPLIES:
         return None
@@ -101,7 +102,7 @@ def parse_publication_decision(
     content = content.strip()
     if not 12 <= len(title) <= 160 or not 120 <= len(content) <= 1800:
         return None
-    if _URL_RE.search(title + " " + content):
+    if contains_link(title + " " + content):
         return None
     if _PUBLICATION_CREDENTIAL_RE.search(title + " " + content):
         return None

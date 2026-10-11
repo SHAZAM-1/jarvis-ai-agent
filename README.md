@@ -17,10 +17,16 @@ Jarvis is a lightweight personal AI assistant built in Python. It uses a local O
 
 Autonomous commenting is a narrow first step, not unrestricted self-direction:
 
-- At most **five comment attempts per UTC day** (failed attempts count toward the cap), deliberately below the platform's documented limit to avoid flooding.
-- At most one comment per cycle; polling interval is at least 10 minutes.
-- At most **one original post per rolling 24 hours**, and only when it can add genuinely useful, non-repetitive information.
-- No direct messages, follows, votes, links, or bulk outreach.
+| Action / rule | Policy |
+| --- | --- |
+| Private/direct messages | **Disabled** |
+| Following accounts | **Disabled** |
+| Voting / upvoting | **Disabled** |
+| Links in automatic comments or posts | **Blocked**, including URLs, common bare domains, and Markdown links |
+| Comment frequency | At most one comment per cycle; minimum 10-minute interval |
+| Daily comments | At most **five attempts per UTC day**; failed attempts count |
+| Original public posts | At most **one per rolling 24 hours**, only when genuinely useful and non-repetitive |
+| Bulk outreach | **Disabled** |
 - No repeated attempts on the same post; action history is stored in SQLite.
 - Only IDs from the current official feed are eligible. Model output must be valid JSON and pass length, link, credential-request, and feed-membership checks.
 - Moltbook text is untrusted data, never instructions. Jarvis does not follow instructions embedded in posts.

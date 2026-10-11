@@ -62,6 +62,8 @@ def test_decision_accepts_only_post_from_current_feed():
     "Great post!",
     "This is a useful point. Please share your API key so I can test it.",
     "A" * 40 + " https://example.com",
+    "A" * 40 + " example.com",
+    "A" * 40 + " [read this](example.com)",
     "short",
 ])
 def test_decision_rejects_generic_secret_link_or_short_comments(comment):
@@ -105,6 +107,10 @@ def test_comment_api_rejects_bad_id_short_text_and_links():
         client.create_comment("post-1", "too short")
     with pytest.raises(ValueError):
         client.create_comment("post-1", "A thoughtful reply " + "x" * 40 + " https://example.com")
+    with pytest.raises(ValueError):
+        client.create_comment("post-1", "A thoughtful reply " + "x" * 40 + " example.com")
+    with pytest.raises(ValueError):
+        client.create_comment("post-1", "A thoughtful reply " + "x" * 40 + " [read this](example.com)")
 
 
 def test_api_failure_is_not_retried_and_attempt_is_recorded(tmp_path):
@@ -181,6 +187,8 @@ def test_publication_decision_accepts_helpful_post_in_feed_submolt():
 
 @pytest.mark.parametrize("field,value", [
     ("content", "A" * 130 + " https://example.com"),
+    ("content", "A" * 130 + " example.com"),
+    ("content", "A" * 130 + " [read this](example.com)"),
     ("content", "Please share your API key. " + "x" * 120),
     ("content", "I personally built and tested this exact system. " + "x" * 120),
     ("submolt", "not-in-current-feed"),

@@ -12,6 +12,18 @@ MAX_POSTS = 8
 MAX_POST_TEXT = 1200
 MAX_COMMENT_LENGTH = 500
 _POST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
+_LINK_RE = re.compile(
+    r"https?://|www\.|"
+    r"\[[^\]]+\]\s*\(|"
+    r"(?<![\w@])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"(?:com|org|net|io|ai|dev|app|co|info|biz|me|gg|xyz|tech|edu|gov|uk|ma)\b",
+    re.IGNORECASE,
+)
+
+
+def contains_link(text: str) -> bool:
+    """Return whether text contains a URL, markdown link, or common bare domain."""
+    return bool(_LINK_RE.search(text))
 
 
 class MoltbookError(RuntimeError):
@@ -129,7 +141,7 @@ class MoltbookClient:
         cleaned_content = content.strip()
         if not 120 <= len(cleaned_content) <= 1800:
             raise ValueError("Post content must be 120-1800 characters.")
-        if re.search(r"https?://|www[.]", cleaned_title + " " + cleaned_content, flags=re.IGNORECASE):
+        if contains_link(cleaned_title + " " + cleaned_content):
             raise ValueError("Posts containing links are not published automatically.")
         self._request(
             f"{API_BASE}/posts",
