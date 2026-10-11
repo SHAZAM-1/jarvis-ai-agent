@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -56,8 +57,8 @@ class MoltbookClient:
         cleaned_key = api_key.strip()
         if not cleaned_key:
             raise ValueError("MOLTBOOK_API_KEY is required for community analysis.")
-        if timeout <= 0:
-            raise ValueError("timeout must be greater than zero")
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be a finite number greater than zero")
         self._api_key = cleaned_key
         self.timeout = timeout
         self.approved_links = tuple(approved_links)

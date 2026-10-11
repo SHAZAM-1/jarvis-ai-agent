@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,8 +47,10 @@ class Settings:
             raise ValueError("JARVIS_OLLAMA_URL must start with http:// or https://.")
         if not model:
             raise ValueError("JARVIS_MODEL cannot be empty.")
-        if timeout <= 0:
-            raise ValueError("JARVIS_REQUEST_TIMEOUT must be greater than zero.")
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError(
+                "JARVIS_REQUEST_TIMEOUT must be a finite number greater than zero."
+            )
         api_key = os.getenv("MOLTBOOK_API_KEY", "").strip() or None
         autonomous_social = _env_bool("JARVIS_AUTONOMOUS_SOCIAL", default=False)
         autonomous_development = _env_bool(

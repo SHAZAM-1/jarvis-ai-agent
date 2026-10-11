@@ -97,3 +97,10 @@ def test_approved_social_links_reject_unsafe_url_forms(monkeypatch, link):
     monkeypatch.setenv("JARVIS_APPROVED_SOCIAL_LINKS", link)
     with pytest.raises(ValueError, match="JARVIS_APPROVED_SOCIAL_LINKS"):
         Settings.from_env()
+
+
+@pytest.mark.parametrize("value", ["nan", "NaN", "inf", "-inf", "0", "-1"])
+def test_non_finite_or_non_positive_timeout_is_rejected(monkeypatch, value):
+    monkeypatch.setenv("JARVIS_REQUEST_TIMEOUT", value)
+    with pytest.raises(ValueError, match="finite number greater than zero"):
+        Settings.from_env()

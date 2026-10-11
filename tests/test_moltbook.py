@@ -127,3 +127,9 @@ def test_create_post_rejects_invalid_payloads(submolt, title, content):
     client = MoltbookClient("secret")
     with pytest.raises(ValueError):
         client.create_post(submolt, title, content)
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), 0, -1])
+def test_client_rejects_non_finite_or_non_positive_timeout(timeout):
+    with pytest.raises(ValueError, match="finite number greater than zero"):
+        MoltbookClient("test-key", timeout=timeout)
