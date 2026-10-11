@@ -2,23 +2,31 @@
 
 from __future__ import annotations
 
+from threading import Event
+
 from jarvis.agent import JarvisAgent
 from jarvis.config import Settings
 from jarvis.llm.ollama import OllamaClient, OllamaError
 from jarvis.memory import MemoryStore
 from jarvis.moltbook import MoltbookClient, MoltbookError, build_analysis_messages
+from jarvis.moltbook_loop import (
+    DEFAULT_INTERVAL_SECONDS,
+    MIN_INTERVAL_SECONDS,
+    run_growth_loop,
+)
 
 
 def _print_help() -> None:
     print(
         "Commands:\n"
-        "  /help                 Show this help\n"
-        "  /learn <lesson>       Save a correction or preference for future chats\n"
-        "  /lessons              List saved learning notes\n"
-        "  /forget <id>          Delete one saved learning note\n"
-        "  /moltbook             Analyze a small public Moltbook feed sample (read-only)\n"
-        "  /clear                Clear chat history (keeps learning notes)\n"
-        "  /exit                 Quit Jarvis"
+        "  /help                       Show this help\n"
+        "  /learn <lesson>             Save a correction or preference for future chats\n"
+        "  /lessons                    List saved learning notes\n"
+        "  /forget <id>                Delete one saved learning note\n"
+        "  /moltbook                   Analyze one public Moltbook feed sample (read-only)\n"
+        "  /moltbook-loop [minutes]    Periodically analyze public posts; Ctrl+C stops\n"
+        "  /clear                      Clear chat history (keeps learning notes)\n"
+        "  /exit                       Quit Jarvis"
     )
 
 
@@ -85,27 +93,60 @@ def main() -> None:
             except (ValueError, TypeError):
                 print("Jarvis: Usage: /forget <numeric lesson ID>")
             continue
-        if command == "/moltbook":
+        if command in {"/moltbook", "/moltbook-loop"}:
             if not settings.moltbook_api_key:
                 print(
                     "Jarvis: Set MOLTBOOK_API_KEY in your local PowerShell environment "
                     "first. Never paste it into chat or commit it to Git."
                 )
                 continue
+            client = MoltbookClient(settings.moltbook_api_key)
+            analyze = lambda posts: llm.chat(build_analysis_messages(posts))
+            if command == "/moltbook":
+                try:
+                    print("Jarvis: Fetching a small public feed sample (read-only)...")
+                    posts = client.fetch_posts(limit=8)
+                    if not posts:
+                        print("Jarvis: Moltbook returned no posts to analyze.")
+                        continue
+                    report = analyze(posts)
+                    print(f"\nJarvis — Moltbook atmosphere report ({len(posts)} posts):\n{report}")
+                    print(
+                        "\nJarvis: This is a limited sample, not the whole community. "
+                        "No posts, comments, votes, follows, or memory changes were made."
+                    )
+                except (MoltbookError, OllamaError, ValueError) as exc:
+                    print(f"Jarvis Moltbook error: {exc}")
+                continue
+
             try:
-                print("Jarvis: Fetching a small public feed sample (read-only)...")
-                posts = MoltbookClient(settings.moltbook_api_key).fetch_posts(limit=8)
-                if not posts:
-                    print("Jarvis: Moltbook returned no posts to analyze.")
-                    continue
-                report = llm.chat(build_analysis_messages(posts))
-                print(f"\nJarvis — Moltbook atmosphere report ({len(posts)} posts):\n{report}")
-                print(
-                    "\nJarvis: This is a limited sample, not the whole community. "
-                    "No posts, comments, votes, follows, or memory changes were made."
+                interval_minutes = (
+                    int(argument.strip())
+                    if argument.strip()
+                    else DEFAULT_INTERVAL_SECONDS // 60
                 )
-            except (MoltbookError, OllamaError, ValueError) as exc:
-                print(f"Jarvis Moltbook error: {exc}")
+                if interval_minutes * 60 < MIN_INTERVAL_SECONDS:
+                    print("Jarvis: Use an interval of at least 30 minutes to avoid spammy polling.")
+                    continue
+            except ValueError:
+                print("Jarvis: Usage: /moltbook-loop [minutes, minimum 30]")
+                continue
+
+            print(
+                f"Jarvis: Growth observation loop started (every {interval_minutes} minutes). "
+                "It only reads public posts and drafts ideas; it will not contact bots, "
+                "post, follow, change memory, or rewrite code. Press Ctrl+C to stop."
+            )
+            try:
+                run_growth_loop(
+                    lambda: client.fetch_posts(limit=8, sort="new"),
+                    analyze,
+                    stop_event=Event(),
+                    on_report=lambda report: print(f"\nJarvis growth report:\n{report}"),
+                    interval_seconds=interval_minutes * 60,
+                )
+            except KeyboardInterrupt:
+                print("\nJarvis: Growth loop stopped.")
             continue
 
         try:
