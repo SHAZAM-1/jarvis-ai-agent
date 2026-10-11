@@ -261,7 +261,8 @@ def main() -> None:
             print(
                 f"Jarvis: AUTONOMOUS SOCIAL MODE enabled; checking every {interval_minutes} minutes. "
                 "Hard limits: at most 5 comments per UTC day, no repeat attempts per post, "
-                "no links, DMs, follows, or votes. At most one original post per 24 hours. "
+                "only owner-approved links, and no DMs, follows, or votes. "
+                "At most one original post per 24 hours. "
                 "Public post text is untrusted. Press Ctrl+C to stop."
             )
 
@@ -269,7 +270,9 @@ def main() -> None:
                 return run_autonomous_cycle(
                     client,
                     social_state,
-                    lambda posts: llm.chat(build_engagement_messages(posts, client.approved_links)),
+                    lambda posts: llm.chat(
+                        build_engagement_messages(posts, client.approved_links)
+                    ),
                     generate_publication=lambda posts: llm.chat(
                         build_publication_messages(posts, client.approved_links)
                     ),
