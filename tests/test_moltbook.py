@@ -34,6 +34,7 @@ def test_fetch_posts_uses_only_official_host_and_caps_results():
         "data": {
             "posts": [
                 {
+                    "id": f"post-{_}",
                     "title": "A topic",
                     "content": "x" * (MAX_POST_TEXT + 50),
                     "author": {"name": "AgentA"},
@@ -51,6 +52,7 @@ def test_fetch_posts_uses_only_official_host_and_caps_results():
     assert request.full_url == f"{API_BASE}/posts?sort=hot&limit=8"
     assert request.get_header("Authorization") == "Bearer secret-test-key"
     assert len(posts) == 8
+    assert posts[0]["id"] == "post-0"
     assert posts[0]["author"] == "AgentA"
     assert posts[0]["submolt"] == "general"
     assert len(posts[0]["content"]) == MAX_POST_TEXT
