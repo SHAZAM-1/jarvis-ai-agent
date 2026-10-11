@@ -11,7 +11,7 @@ Jarvis is a lightweight personal AI assistant built in Python. It uses a local O
 - **Read-only observation:** `/moltbook-loop [minutes]` periodically produces reports and drafts, without social actions.
 - **Opt-in autonomous social:** `/moltbook-auto [minutes]` can submit at most one relevant comment per cycle and, if no comment is warranted, publish at most one original helpful post per rolling 24 hours after explicit environment opt-in.
 - **Persistent anti-duplication:** SQLite records comment attempts so Jarvis will not retry the same post after restarting.
-- **Safe default:** autonomous social mode is disabled unless `JARVIS_AUTONOMOUS_SOCIAL=true` is explicitly set.
+- **Safe default:** autonomous social mode and autonomous development are disabled unless explicitly enabled in the local environment.
 
 ## Autonomous social guardrails
 
@@ -31,7 +31,7 @@ These checks reduce risk but cannot guarantee that every model-generated comment
 
 ## What “learning” and “self-development” mean
 
-Jarvis does not train or change model weights. Learning notes are stored context, not guaranteed facts. The social loop can make a small number of public replies, but it does not rewrite its own source code, install packages, run arbitrary shell commands, merge pull requests, or deploy itself. Those require a separate, isolated, tested and human-reviewed workflow.
+Jarvis does not train or change model weights. Learning notes are stored context, not guaranteed facts. Optional self-development can propose one small project-scoped patch, apply it on an isolated GitHub branch, run fixed local checks, request a second model review, open a PR, wait for GitHub CI, and merge only if CI is green and GitHub permits the merge. It cannot edit protected policy/control-plane files, dependencies, workflows, or configuration; it never runs model-supplied commands. Failed checks leave the PR open and do not merge.
 
 The loop is not yet configured to launch itself at Windows startup. The computer must be on, Ollama and internet access must be available, and Jarvis must be running the relevant command. No live Moltbook request or local Ollama inference is considered verified until tested on the user's machine.
 
@@ -75,7 +75,9 @@ jarvis
 - `/moltbook` — one-time read-only community report.
 - `/moltbook-loop [minutes]` — repeat read-only observation; minimum 30 minutes; Ctrl+C stops.
 - `/moltbook-auto [minutes]` — bounded autonomous comments and rare original posts; minimum 10 minutes; Ctrl+C stops.
-- `/social-history` — show recent comment attempts and outcomes.
+- `/social-history` — show recent comment and post attempts and outcomes.
+- `/self-dev` — run one guarded autonomous code-improvement attempt (explicit opt-in required).
+- `/self-dev-loop [hours]` — repeat autonomous maintenance every 24 hours or longer; Ctrl+C stops.
 - `/learn <correction or preference>` — save a user-approved note.
 - `/lessons` — list saved notes.
 - `/forget <id>` — remove a saved note.
@@ -100,7 +102,18 @@ Then type:
 
 The default interval is 10 minutes. You can use `/moltbook-auto 120` for two-hour checks. A hard cap of five comment attempts per UTC day and one original post per rolling 24 hours are enforced, regardless of interval. Use Ctrl+C to stop the loop. To disable, set `$env:JARVIS_AUTONOMOUS_SOCIAL = "false"` and restart Jarvis.
 
-The feature will not start without both an API key and the explicit opt-in. Do not share the API key. This app does not load a `.env` file automatically; environment variables must be set in PowerShell before starting Jarvis.
+The social feature will not start without both an API key and the explicit social opt-in. Do not share the API key. This app does not load a `.env` file automatically; environment variables must be set in PowerShell before starting Jarvis.
+
+### Enable guarded self-development (explicit opt-in)
+
+Set this only after installing Git and the GitHub CLI (`gh`), authenticating `gh`, and reviewing the owner-policy and protected-path rules:
+
+```powershell
+$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'true'
+jarvis
+```
+
+Then run `/self-dev` for one attempt or `/self-dev-loop` to let Jarvis choose one bounded improvement per day without a new task prompt. The loop only works from a clean local `main` synced with `origin/main`. It creates a project-scoped branch and PR, runs fixed tests and static diff checks, requests a second model review, waits for GitHub CI, and merges only if checks are green and GitHub permits it. It never force-pushes, resets, cleans, changes protected files, installs dependencies, or runs arbitrary model-supplied commands. This is defense-in-depth, not a mathematical guarantee against every possible bad patch; keep backups and review merged PR history. Disable it with `$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'false'`.
 
 ## Configuration
 

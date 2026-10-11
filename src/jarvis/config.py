@@ -27,6 +27,7 @@ class Settings:
     request_timeout: float = 120.0
     moltbook_api_key: str | None = None
     autonomous_social: bool = False
+    autonomous_development: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -47,4 +48,10 @@ class Settings:
             raise ValueError("JARVIS_REQUEST_TIMEOUT must be greater than zero.")
         api_key = os.getenv("MOLTBOOK_API_KEY", "").strip() or None
         autonomous_social = _env_bool("JARVIS_AUTONOMOUS_SOCIAL", default=False)
-        return cls(url, model, db_path, timeout, api_key, autonomous_social)
+        autonomous_development = _env_bool(
+            "JARVIS_AUTONOMOUS_DEVELOPMENT", default=False
+        )
+        return cls(
+            url, model, db_path, timeout, api_key,
+            autonomous_social, autonomous_development
+        )

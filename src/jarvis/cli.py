@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from threading import Event
 
 from jarvis.agent import JarvisAgent
@@ -27,6 +28,7 @@ from jarvis.moltbook_loop import (
     run_growth_loop,
 )
 from jarvis.social_state import SocialState
+from jarvis.self_development import SelfDevelopmentManager
 
 
 def _print_help() -> None:
@@ -40,6 +42,8 @@ def _print_help() -> None:
         "  /moltbook-loop [minutes]    Periodically analyze public posts; Ctrl+C stops\n"
         "  /moltbook-auto [minutes]    Opt-in autonomous replies; Ctrl+C stops\n"
         "  /social-history             Show recent autonomous social attempts\n"
+        "  /self-dev                   Run one guarded autonomous improvement cycle\n"
+        "  /self-dev-loop [hours]      Repeat guarded self-development; default 24h; Ctrl+C stops\n"
         "  /clear                      Clear chat history (keeps learning notes)\n"
         "  /exit                       Quit Jarvis"
     )
@@ -108,6 +112,43 @@ def main() -> None:
                 )
             except (ValueError, TypeError):
                 print("Jarvis: Usage: /forget <numeric lesson ID>")
+            continue
+        if command in {"/self-dev", "/self-dev-loop"}:
+            if not settings.autonomous_development:
+                print(
+                    "Jarvis: Self-development is disabled. Set "
+                    "$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'true' in PowerShell, "
+                    "then restart Jarvis. The default is safely off."
+                )
+                continue
+            manager = SelfDevelopmentManager(
+                llm,
+                Path(__file__).resolve().parents[2],
+                settings.db_path,
+            )
+            if command == "/self-dev":
+                print("Jarvis: Starting one guarded self-development cycle.")
+                print(manager.run_cycle())
+                continue
+            try:
+                interval_hours = int(argument.strip()) if argument.strip() else 24
+                if interval_hours < 24:
+                    print("Jarvis: Self-development checks must be at least 24 hours apart.")
+                    continue
+            except ValueError:
+                print("Jarvis: Usage: /self-dev-loop [hours, minimum 24]")
+                continue
+            print(
+                f"Jarvis: Guarded self-development loop started every {interval_hours} hours. "
+                "It may open and merge a project-scoped PR only after local tests, "
+                "independent review, and green GitHub CI. Press Ctrl+C to stop."
+            )
+            try:
+                while True:
+                    print(f"Jarvis self-development: {manager.run_cycle()}")
+                    Event().wait(interval_hours * 60 * 60)
+            except KeyboardInterrupt:
+                print("\nJarvis: Self-development loop stopped.")
             continue
         if command == "/social-history":
             actions = social_state.recent_actions()
