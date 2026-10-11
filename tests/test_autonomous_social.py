@@ -20,6 +20,22 @@ from jarvis.moltbook import API_BASE, MoltbookClient, MoltbookError
 from jarvis.social_state import SocialState
 
 
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload
+        self.status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self, size=-1):
+        encoded = json.dumps(self.payload).encode("utf-8")
+        return encoded if size < 0 else encoded[:size]
+
+
 def sample_posts():
     return [{
         "id": "post-123",
