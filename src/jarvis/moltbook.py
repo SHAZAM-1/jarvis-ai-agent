@@ -26,7 +26,7 @@ def contains_link(text: str) -> bool:
     return bool(_LINK_RE.search(text))
 
 
-_EXPLICIT_URL_RE = re.compile(r"https?://[^\\s<>()]+|www\\.[^\\s<>()]+", re.IGNORECASE)
+_EXPLICIT_URL_RE = re.compile(r"https?://[^\s<>()]+|www\.[^\s<>()]+", re.IGNORECASE)
 
 
 def contains_unapproved_link(text: str, approved_links: tuple[str, ...] = ()) -> bool:
