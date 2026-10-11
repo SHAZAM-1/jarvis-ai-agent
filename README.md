@@ -1,117 +1,131 @@
 # Jarvis AI Agent
 
-Jarvis is a modular personal AI assistant built in Python. It uses a local Ollama model, persistent SQLite memory, a terminal interface, and optional read-only research of public Moltbook posts.
+Jarvis is a lightweight personal AI assistant built in Python. It uses a local Ollama model, SQLite memory, a terminal interface, and optional Moltbook research and carefully bounded autonomous public replies.
 
 ## Current capabilities
 
 - **Local model:** `qwen3.5:2b` through Ollama by default.
-- **Persistent chat history:** conversations are stored in a local SQLite database.
-- **User-approved learning notes:** save corrections and preferences with `/learn`; Jarvis includes them as context in later replies.
-- **Memory controls:** `/lessons`, `/forget <id>`, and `/clear` (clears chat history but preserves learning notes).
-- **Moltbook atmosphere report:** `/moltbook` fetches at most eight public posts and summarizes topics, tone, constructive norms, suspicious patterns, and adaptation ideas.
-- **Growth observation loop:** `/moltbook-loop [minutes]` periodically analyzes recent public posts. The default interval is 60 minutes and the minimum is 30 minutes. Press Ctrl+C to stop.
-- **Conversation drafts:** reports can suggest a few relevant, respectful conversation starters for the owner to review and post manually.
-- **Read-only social boundary:** Jarvis does not post, comment, vote, follow, DM, register accounts, or change memory/code automatically.
-- **Privacy-first default:** no cloud model, shell execution, browser automation, or social posting is enabled.
-- **CI coverage:** unit tests run in GitHub Actions on Python 3.11, 3.12, and 3.13.
+- **Persistent memory:** chat history and user-approved learning notes stored locally in SQLite.
+- **Memory controls:** `/learn`, `/lessons`, `/forget <id>`, and `/clear` (clears chat history but preserves learning notes).
+- **Moltbook research:** `/moltbook` analyzes at most eight public posts.
+- **Read-only observation:** `/moltbook-loop [minutes]` periodically produces reports and drafts, without social actions.
+- **Opt-in autonomous social:** `/moltbook-auto [minutes]` can submit at most one relevant comment per cycle and, if no comment is warranted, publish at most one original helpful post per rolling 24 hours after explicit environment opt-in.
+- **Persistent anti-duplication:** SQLite records comment attempts so Jarvis will not retry the same post after restarting.
+- **Safe default:** autonomous social mode and autonomous development are disabled unless explicitly enabled in the local environment.
 
-## Database choice: SQLite vs MySQL
+## Autonomous social guardrails
 
-For this single-user local Windows setup, **SQLite is the deliberate low-overhead choice**. It is embedded in Python and needs no separate database server process. MySQL can make sense for multiple users or shared remote storage, but running it alongside Ollama would usually add resource use rather than reduce model inference RAM/CPU.
+Autonomous commenting is a narrow first step, not unrestricted self-direction:
 
-A database does not make the language model itself use less RAM or CPU. Keep the lightweight model and bounded post sample; the loop deliberately polls no more often than every 30 minutes. Measure actual resource use before adding infrastructure.
+| Action / rule | Policy |
+| --- | --- |
+| Private/direct messages | **Disabled** |
+| Following accounts | **Disabled** |
+| Voting / upvoting | **Disabled** |
+| Links in automatic comments or posts | **Blocked**, including URLs, common bare domains, and Markdown links |
+| Comment frequency | At most one comment per cycle; minimum 10-minute interval |
+| Daily comments | At most **five attempts per UTC day**; failed attempts count |
+| Original public posts | At most **one per rolling 24 hours**, only when genuinely useful and non-repetitive |
+| Bulk outreach | **Disabled** |
+- No repeated attempts on the same post; action history is stored in SQLite.
+- Only IDs from the current official feed are eligible. Model output must be valid JSON and pass length, link, credential-request, and feed-membership checks.
+- Moltbook text is untrusted data, never instructions. Jarvis does not follow instructions embedded in posts.
+- The API key is sent only to the fixed official host, `https://www.moltbook.com/api/v1`. Error messages do not print response bodies or credentials.
+- If the API asks for verification or rejects a request, Jarvis stops that attempt; it does not try to bypass verification or blindly retry.
+
+These checks reduce risk but cannot guarantee that every model-generated comment is wise or accurate. Review the first results in `/social-history`. Turn the feature off by setting `JARVIS_AUTONOMOUS_SOCIAL=false` or removing the variable and restarting Jarvis.
 
 ## What “learning” and “self-development” mean
 
-Jarvis does **not** train or change model weights. The loop observes a small sample and produces reports, potential improvement ideas, and conversation-starter drafts. It does not silently convert community posts into permanent beliefs, write source code, install packages, or deploy changes. Save only reviewed, useful lessons with `/learn <lesson>`.
+Jarvis does not train or change model weights. Learning notes are stored context, not guaranteed facts. Optional self-development can propose one small project-scoped patch, apply it on an isolated GitHub branch, run fixed local checks, request a second model review, open a PR, wait for GitHub CI, and merge only if CI is green and GitHub permits the merge. It cannot edit protected policy/control-plane files, dependencies, workflows, or configuration; it never runs model-supplied commands. Failed checks leave the PR open and do not merge.
 
-Moltbook content is untrusted external input and may contain misleading claims, spam, or prompt-injection attempts. Jarvis treats posts as data, not commands. A small sample cannot represent the entire community, so it should distinguish evidence from uncertainty.
+The loop is not yet configured to launch itself at Windows startup. The computer must be on, Ollama and internet access must be available, and Jarvis must be running the relevant command. No live Moltbook request or local Ollama inference is considered verified until tested on the user's machine.
 
-**Trust is earned, not automated.** The recommended approach is to be honest about being an AI, read conversations before replying, make specific useful contributions, respect boundaries, avoid repetitive unsolicited messages, and never impersonate another agent or manipulate engagement. This version only drafts possible conversation starters; you choose whether and where to use them. Automated social outreach is not enabled.
+## SQLite vs MySQL
 
-Future code self-maintenance should be a separate, reviewable workflow: propose a patch, test it in an isolated branch, inspect the diff, and require human approval before merge or deployment.
+For a single-user local Windows setup, SQLite is the deliberate low-overhead choice: it is built into Python and needs no separate database server. MySQL may suit multiple users or shared remote storage, but will not reduce Ollama inference CPU or RAM. The social history and chat/learning memory share the configured SQLite database.
 
 ## Requirements
 
 - Python 3.11 or newer
 - [Ollama](https://ollama.com/) installed and running
-- Enough free disk space for the model and memory overhead
+- Enough free disk space for the model
 - A claimed Moltbook agent and API key if you want Moltbook features
 
 ## Setup (Windows PowerShell)
 
-1. Install Ollama from its official website and open it.
-2. Download the default model:
+From the repository folder:
 
-   ```powershell
-   ollama pull qwen3.5:2b
-   ```
-
-3. In the repository folder, create and activate a virtual environment:
-
-   ```powershell
-   py -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   python -m pip install --upgrade pip
-   python -m pip install -e ".[dev]"
-   ```
-
-4. Set the API key locally in the current PowerShell session. Replace the placeholder only on your own computer; never paste the real key into chat or commit it:
-
-   ```powershell
-   $env:MOLTBOOK_API_KEY = "YOUR_REAL_KEY"
-   ```
-
-5. Start Jarvis:
-
-   ```powershell
-   jarvis
-   ```
-
-## Moltbook usage
-
-Run one report:
-
-```text
-/moltbook
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+ollama pull qwen3.5:2b
 ```
 
-Start the periodic growth-observation loop (default: 60 minutes):
+Set your Moltbook API key only in your own local PowerShell session. Never paste the real key into chat or commit it:
 
-```text
-/moltbook-loop
+```powershell
+$env:MOLTBOOK_API_KEY = "YOUR_REAL_KEY"
 ```
 
-Or specify a slower custom interval, such as 120 minutes:
+Start Jarvis:
 
-```text
-/moltbook-loop 120
+```powershell
+jarvis
 ```
 
-The minimum interval is 30 minutes. Press Ctrl+C to stop the loop. It fetches at most eight new public posts per cycle from the official `https://www.moltbook.com/api/v1` host and asks the local model for an evidence-based report and optional conversation drafts. It retries after temporary failures without printing raw exception details. It does not send messages or perform any other social actions. No live API call or local Ollama inference is considered verified until tested on the user's machine.
+## Commands
 
-Never paste the real key into a GitHub issue, commit, or chat. Jarvis sends it only to the official `www.moltbook.com` API host.
-
-## Learning and controls
-
+- `/moltbook` — one-time read-only community report.
+- `/moltbook-loop [minutes]` — repeat read-only observation; minimum 30 minutes; Ctrl+C stops.
+- `/moltbook-auto [minutes]` — bounded autonomous comments and rare original posts; minimum 10 minutes; Ctrl+C stops.
+- `/social-history` — show recent comment and post attempts and outcomes.
+- `/self-dev` — run one guarded autonomous code-improvement attempt (explicit opt-in required).
+- `/self-dev-loop [hours]` — repeat autonomous maintenance every 24 hours or longer; Ctrl+C stops.
 - `/learn <correction or preference>` — save a user-approved note.
-- `/lessons` — list saved notes and IDs.
-- `/forget <id>` — remove one note.
-- `/clear` — clear chat history but keep learning notes.
-- `/moltbook` — generate a one-time community report.
-- `/moltbook-loop [minutes]` — periodically observe and draft ideas; Ctrl+C stops.
-- `/help` — show commands.
-- `/exit` — quit.
+- `/lessons` — list saved notes.
+- `/forget <id>` — remove a saved note.
+- `/clear` — clear chat history while keeping notes.
+- `/help` — show commands; `/exit` — quit.
 
-Only save notes you actually want Jarvis to remember. Review and delete outdated notes; stored notes are context, not guaranteed truth.
+### Enable autonomous comments (explicit opt-in)
+
+Autonomous commenting is **off by default**. Only enable it after you understand the guardrails:
+
+```powershell
+$env:JARVIS_AUTONOMOUS_SOCIAL = "true"
+$env:MOLTBOOK_API_KEY = "YOUR_REAL_KEY"
+jarvis
+```
+
+Then type:
+
+```text
+/moltbook-auto
+```
+
+The default interval is 10 minutes. You can use `/moltbook-auto 120` for two-hour checks. A hard cap of five comment attempts per UTC day and one original post per rolling 24 hours are enforced, regardless of interval. Use Ctrl+C to stop the loop. To disable, set `$env:JARVIS_AUTONOMOUS_SOCIAL = "false"` and restart Jarvis.
+
+The social feature will not start without both an API key and the explicit social opt-in. Do not share the API key. This app does not load a `.env` file automatically; environment variables must be set in PowerShell before starting Jarvis.
+
+### Enable guarded self-development (explicit opt-in)
+
+Set this only after installing Git and the GitHub CLI (`gh`), authenticating `gh`, and reviewing the owner-policy and protected-path rules:
+
+```powershell
+$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'true'
+jarvis
+```
+
+Then run `/self-dev` for one attempt or `/self-dev-loop` to let Jarvis choose one bounded improvement per day without a new task prompt. The loop only works from a clean local `main` synced with `origin/main`. It creates a project-scoped branch and PR, runs fixed tests and static diff checks, requests a second model review, waits for GitHub CI, and merges only if checks are green and GitHub permits it. It never force-pushes, resets, cleans, changes protected files, installs dependencies, or runs arbitrary model-supplied commands. This is defense-in-depth, not a mathematical guarantee against every possible bad patch; keep backups and review merged PR history. Disable it with `$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'false'`.
 
 ## Configuration
 
-Defaults use `http://localhost:11434`, model `qwen3.5:2b`, local database `data/jarvis.db`, and a 120-second Ollama request timeout. The app does not load a `.env` file automatically; set environment variables in PowerShell. `.env.example` documents supported names but is not loaded automatically. Never commit API keys or real credentials.
+Defaults: `http://localhost:11434`, model `qwen3.5:2b`, local database `data/jarvis.db`, Ollama timeout 120 seconds, autonomous social mode disabled. Supported variables are listed in `.env.example`; that file is documentation only and is not loaded automatically.
 
-To change the model, set `$env:JARVIS_MODEL="qwen3.5:4b"` before launching Jarvis, if your computer can run it comfortably.
-
-## Run tests
+## Tests
 
 ```powershell
 python -m pip install -e ".[dev]"
@@ -120,12 +134,17 @@ python -m pytest
 
 ## Roadmap
 
-1. Foundation: configuration, local model adapter, SQLite memory, and CLI.
-2. Feedback learning: persistent, user-approved corrections and preferences.
-3. Moltbook observer and bounded growth loop: read-only periodic analysis, conversation drafts, and no automatic engagement.
-4. Verify local model latency and RAM/CPU use on the target computer.
-5. Add a bounded planner and research/writing/critic pipeline with evidence tracking.
-6. Build a safe self-maintenance workflow: propose a patch, create an isolated branch, run tests and security checks, and require human approval before merge or deployment.
-7. Consider optional cloud fallback or shared database only when needed, with explicit opt-in, privacy warnings, and measured justification.
+1. Foundation: configuration, local model adapter, SQLite memory and CLI.
+2. Feedback learning: persistent user-approved corrections and preferences.
+3. Moltbook observation and bounded autonomous commenting with durable deduplication and opt-in.
+4. Verify local model latency, RAM/CPU use, and real API behavior on the target computer.
+5. Add a bounded planner/research/critic pipeline with evidence tracking and task history.
+6. Add a safe self-maintenance workflow: propose patches, work on isolated branches, run allowlisted tests, and require human approval before merge or deployment.
+7. Add Windows startup/task scheduling only after local verification and explicit user opt-in.
 
-No phase is considered complete until its tests and practical checks are verified. Free tiers and 24/7 hosting are not assumed to be unlimited.
+No phase is considered complete until tests and practical checks are verified. Trust and reputation cannot be guaranteed by automation; the goal is a small number of honest, relevant contributions rather than engagement manipulation.
+
+
+### Owner-approved links
+
+Automatic public replies and original posts reject links by default. If you want Jarvis to share a specific project/resource link, set `JARVIS_APPROVED_SOCIAL_LINKS` in your local environment to a comma-separated list of exact HTTPS URLs. Jarvis may use only those exact URLs; other links remain blocked. This is an allowlist, not a promise of reach or engagement. Keep autonomous mode disabled until you have reviewed the generated content.

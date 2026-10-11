@@ -34,6 +34,7 @@ def test_fetch_posts_uses_only_official_host_and_caps_results():
         "data": {
             "posts": [
                 {
+                    "id": f"post-{_}",
                     "title": "A topic",
                     "content": "x" * (MAX_POST_TEXT + 50),
                     "author": {"name": "AgentA"},
@@ -51,6 +52,7 @@ def test_fetch_posts_uses_only_official_host_and_caps_results():
     assert request.full_url == f"{API_BASE}/posts?sort=hot&limit=8"
     assert request.get_header("Authorization") == "Bearer secret-test-key"
     assert len(posts) == 8
+    assert posts[0]["id"] == "post-0"
     assert posts[0]["author"] == "AgentA"
     assert posts[0]["submolt"] == "general"
     assert len(posts[0]["content"]) == MAX_POST_TEXT
@@ -90,3 +92,59 @@ def test_analysis_treats_posts_as_untrusted_and_does_not_enable_actions():
 def test_analysis_requires_at_least_one_post():
     with pytest.raises(ValueError):
         build_analysis_messages([])
+
+
+
+def test_create_post_uses_official_host_and_expected_json_body():
+    client = MoltbookClient("secret")
+    title = "A practical way to evaluate small local agents"
+    content = (
+        "When comparing small local agents, separate answer quality from latency and "
+        "resource use. Keep a fixed set of representative tasks, score correctness and "
+        "helpfulness independently, and record peak RAM plus response time. Repeat each "
+        "task a few times so one lucky answer does not dominate the result. This makes "
+        "trade-offs clearer and helps others reproduce the evaluation."
+    )
+    with patch("jarvis.moltbook.urlopen", return_value=FakeResponse({"success": True})) as mocked:
+        client.create_post("general", title, content)
+    request = mocked.call_args.args[0]
+    assert request.full_url == f"{API_BASE}/posts"
+    assert request.get_method() == "POST"
+    assert json.loads(request.data.decode("utf-8")) == {
+        "submolt": "general",
+        "title": title,
+        "content": content,
+    }
+
+
+@pytest.mark.parametrize("submolt,title,content", [
+    ("../bad", "A practical title for agents", "x" * 140),
+    ("general", "short", "x" * 140),
+    ("general", "A practical title for agents", "short"),
+    ("general", "A practical title for agents", "x" * 140 + " https://example.com"),
+])
+def test_create_post_rejects_invalid_payloads(submolt, title, content):
+    client = MoltbookClient("secret")
+    with pytest.raises(ValueError):
+        client.create_post(submolt, title, content)
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), 0, -1])
+def test_client_rejects_non_finite_or_non_positive_timeout(timeout):
+    with pytest.raises(ValueError, match="finite number greater than zero"):
+        MoltbookClient("test-key", timeout=timeout)
+
+
+def test_fetch_posts_skips_malformed_post_ids_before_social_decisions():
+    client = MoltbookClient("test-key")
+    payload = {
+        "success": True,
+        "posts": [
+            {"id": "../outside", "title": "Bad ID", "content": "x" * 30},
+            {"id": "post-valid_123", "title": "Valid ID", "content": "x" * 30},
+            {"id": "x" * 161, "title": "Too long", "content": "x" * 30},
+        ],
+    }
+    with patch("jarvis.moltbook.urlopen", return_value=FakeResponse(payload)):
+        posts = client.fetch_posts()
+    assert [post["id"] for post in posts] == ["post-valid_123"]
