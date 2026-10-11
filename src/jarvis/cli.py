@@ -5,15 +5,27 @@ from __future__ import annotations
 from threading import Event
 
 from jarvis.agent import JarvisAgent
+from jarvis.autonomous_social import (
+    DEFAULT_INTERVAL_SECONDS as SOCIAL_DEFAULT_INTERVAL_SECONDS,
+    MIN_INTERVAL_SECONDS as SOCIAL_MIN_INTERVAL_SECONDS,
+    run_autonomous_cycle,
+    run_autonomous_loop,
+)
 from jarvis.config import Settings
 from jarvis.llm.ollama import OllamaClient, OllamaError
 from jarvis.memory import MemoryStore
-from jarvis.moltbook import MoltbookClient, MoltbookError, build_analysis_messages
+from jarvis.moltbook import (
+    MoltbookClient,
+    MoltbookError,
+    build_analysis_messages,
+    build_engagement_messages,
+)
 from jarvis.moltbook_loop import (
     DEFAULT_INTERVAL_SECONDS,
     MIN_INTERVAL_SECONDS,
     run_growth_loop,
 )
+from jarvis.social_state import SocialState
 
 
 def _print_help() -> None:
@@ -25,6 +37,8 @@ def _print_help() -> None:
         "  /forget <id>                Delete one saved learning note\n"
         "  /moltbook                   Analyze one public Moltbook feed sample (read-only)\n"
         "  /moltbook-loop [minutes]    Periodically analyze public posts; Ctrl+C stops\n"
+        "  /moltbook-auto [minutes]    Opt-in autonomous replies; Ctrl+C stops\n"
+        "  /social-history             Show recent autonomous social attempts\n"
         "  /clear                      Clear chat history (keeps learning notes)\n"
         "  /exit                       Quit Jarvis"
     )
@@ -34,6 +48,7 @@ def main() -> None:
     settings = Settings.from_env()
     llm = OllamaClient(settings.ollama_url, settings.model, settings.request_timeout)
     memory = MemoryStore(settings.db_path)
+    social_state = SocialState(settings.db_path)
     agent = JarvisAgent(llm, memory)
 
     print("Jarvis AI Agent — local mode")
@@ -93,14 +108,25 @@ def main() -> None:
             except (ValueError, TypeError):
                 print("Jarvis: Usage: /forget <numeric lesson ID>")
             continue
-        if command in {"/moltbook", "/moltbook-loop"}:
+        if command == "/social-history":
+            actions = social_state.recent_actions()
+            if not actions:
+                print("Jarvis: No autonomous social attempts have been recorded.")
+            else:
+                for item in actions:
+                    print(
+                        f"  {item['attempted_at']} | {item['status']} | "
+                        f"post={item['post_id']} | {item['detail']}"
+                    )
+            continue
+        if command in {"/moltbook", "/moltbook-loop", "/moltbook-auto"}:
             if not settings.moltbook_api_key:
                 print(
                     "Jarvis: Set MOLTBOOK_API_KEY in your local PowerShell environment "
                     "first. Never paste it into chat or commit it to Git."
                 )
                 continue
-            client = MoltbookClient(settings.moltbook_api_key)
+            client = MoltbookClient(settings.moltbook_api_key, settings.request_timeout)
 
             def analyze(posts: list[dict[str, str]]) -> str:
                 return llm.chat(build_analysis_messages(posts))
@@ -125,37 +151,78 @@ def main() -> None:
                     print(f"Jarvis Moltbook error: {exc}")
                 continue
 
+            if command == "/moltbook-loop":
+                try:
+                    interval_minutes = (
+                        int(argument.strip())
+                        if argument.strip()
+                        else DEFAULT_INTERVAL_SECONDS // 60
+                    )
+                    if interval_minutes * 60 < MIN_INTERVAL_SECONDS:
+                        print("Jarvis: Use an interval of at least 30 minutes.")
+                        continue
+                except ValueError:
+                    print("Jarvis: Usage: /moltbook-loop [minutes, minimum 30]")
+                    continue
+                print(
+                    f"Jarvis: Read-only observation loop started every {interval_minutes} minutes. "
+                    "No comments or other social actions will be made. Press Ctrl+C to stop."
+                )
+                try:
+                    run_growth_loop(
+                        lambda: client.fetch_posts(limit=8, sort="new"),
+                        analyze,
+                        stop_event=Event(),
+                        on_report=lambda report: print(f"\nJarvis growth report:\n{report}"),
+                        interval_seconds=interval_minutes * 60,
+                    )
+                except KeyboardInterrupt:
+                    print("\nJarvis: Observation loop stopped.")
+                continue
+
+            if not settings.autonomous_social:
+                print(
+                    "Jarvis: Autonomous social actions are disabled. To opt in for this "
+                    "PowerShell session, set $env:JARVIS_AUTONOMOUS_SOCIAL = 'true', "
+                    "then restart Jarvis. The default is safely off."
+                )
+                continue
             try:
                 interval_minutes = (
                     int(argument.strip())
                     if argument.strip()
-                    else DEFAULT_INTERVAL_SECONDS // 60
+                    else SOCIAL_DEFAULT_INTERVAL_SECONDS // 60
                 )
-                if interval_minutes * 60 < MIN_INTERVAL_SECONDS:
-                    print(
-                        "Jarvis: Use an interval of at least 30 minutes "
-                        "to avoid spammy polling."
-                    )
+                if interval_minutes * 60 < SOCIAL_MIN_INTERVAL_SECONDS:
+                    print("Jarvis: Use an interval of at least 30 minutes.")
                     continue
             except ValueError:
-                print("Jarvis: Usage: /moltbook-loop [minutes, minimum 30]")
+                print("Jarvis: Usage: /moltbook-auto [minutes, minimum 30]")
                 continue
 
             print(
-                f"Jarvis: Growth observation loop started (every {interval_minutes} minutes). "
-                "It only reads public posts and drafts ideas; it will not contact bots, "
-                "post, follow, change memory, or rewrite code. Press Ctrl+C to stop."
+                f"Jarvis: AUTONOMOUS SOCIAL MODE enabled; checking every {interval_minutes} minutes. "
+                "Hard limits: at most 1 comment per UTC day, no repeat attempts per post, "
+                "no links, DMs, follows, votes, or autonomous posts. Public post text is "
+                "untrusted. Press Ctrl+C to stop."
             )
+
+            def social_cycle() -> str:
+                return run_autonomous_cycle(
+                    client,
+                    social_state,
+                    lambda posts: llm.chat(build_engagement_messages(posts)),
+                )
+
             try:
-                run_growth_loop(
-                    lambda: client.fetch_posts(limit=8, sort="new"),
-                    analyze,
+                run_autonomous_loop(
+                    social_cycle,
                     stop_event=Event(),
-                    on_report=lambda report: print(f"\nJarvis growth report:\n{report}"),
+                    on_status=lambda status: print(f"\nJarvis social: {status}"),
                     interval_seconds=interval_minutes * 60,
                 )
             except KeyboardInterrupt:
-                print("\nJarvis: Growth loop stopped.")
+                print("\nJarvis: Autonomous social loop stopped.")
             continue
 
         try:
