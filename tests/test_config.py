@@ -12,6 +12,7 @@ def test_defaults_are_local_and_lightweight(monkeypatch):
         "MOLTBOOK_API_KEY",
         "JARVIS_AUTONOMOUS_SOCIAL",
         "JARVIS_AUTONOMOUS_DEVELOPMENT",
+        "JARVIS_APPROVED_SOCIAL_LINKS",
     ):
         monkeypatch.delenv(name, raising=False)
     settings = Settings.from_env()
@@ -69,3 +70,30 @@ def test_autonomous_development_requires_explicit_truthy_opt_in(monkeypatch, val
 def test_autonomous_development_can_be_disabled(monkeypatch, value):
     monkeypatch.setenv("JARVIS_AUTONOMOUS_DEVELOPMENT", value)
     assert Settings.from_env().autonomous_development is False
+
+
+def test_approved_social_links_require_exact_https_urls(monkeypatch):
+    monkeypatch.setenv(
+        "JARVIS_APPROVED_SOCIAL_LINKS",
+        " https://example.com/project,https://github.com/owner/repo,https://example.com/project "
+    )
+    assert Settings.from_env().approved_social_links == (
+        "https://example.com/project",
+        "https://github.com/owner/repo",
+    )
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "http://example.com",
+        "https://user:pass@example.com",
+        "https://example.com:8443/path",
+        "https://example.com/path#fragment",
+        "javascript:alert(1)",
+    ],
+)
+def test_approved_social_links_reject_unsafe_url_forms(monkeypatch, link):
+    monkeypatch.setenv("JARVIS_APPROVED_SOCIAL_LINKS", link)
+    with pytest.raises(ValueError, match="JARVIS_APPROVED_SOCIAL_LINKS"):
+        Settings.from_env()

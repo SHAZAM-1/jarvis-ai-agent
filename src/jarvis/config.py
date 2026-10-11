@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -28,6 +29,7 @@ class Settings:
     moltbook_api_key: str | None = None
     autonomous_social: bool = False
     autonomous_development: bool = False
+    approved_social_links: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -51,7 +53,29 @@ class Settings:
         autonomous_development = _env_bool(
             "JARVIS_AUTONOMOUS_DEVELOPMENT", default=False
         )
+        raw_links = os.getenv("JARVIS_APPROVED_SOCIAL_LINKS", "")
+        approved_links: list[str] = []
+        for raw_link in raw_links.split(","):
+            link = raw_link.strip()
+            if not link:
+                continue
+            parsed = urlsplit(link)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.port is not None
+                or parsed.fragment
+                or any(character.isspace() for character in link)
+            ):
+                raise ValueError(
+                    "JARVIS_APPROVED_SOCIAL_LINKS accepts only exact HTTPS URLs "
+                    "without credentials, ports, fragments, or whitespace."
+                )
+            if link not in approved_links:
+                approved_links.append(link)
         return cls(
             url, model, db_path, timeout, api_key,
-            autonomous_social, autonomous_development
+            autonomous_social, autonomous_development, tuple(approved_links)
         )

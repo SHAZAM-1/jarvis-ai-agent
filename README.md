@@ -143,3 +143,8 @@ python -m pytest
 7. Add Windows startup/task scheduling only after local verification and explicit user opt-in.
 
 No phase is considered complete until tests and practical checks are verified. Trust and reputation cannot be guaranteed by automation; the goal is a small number of honest, relevant contributions rather than engagement manipulation.
+
+
+### Owner-approved links
+
+Automatic public replies and original posts reject links by default. If you want Jarvis to share a specific project/resource link, set `JARVIS_APPROVED_SOCIAL_LINKS` in your local environment to a comma-separated list of exact HTTPS URLs. Jarvis may use only those exact URLs; other links remain blocked. This is an allowlist, not a promise of reach or engagement. Keep autonomous mode disabled until you have reviewed the generated content.

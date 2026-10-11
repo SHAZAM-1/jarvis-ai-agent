@@ -16,7 +16,7 @@ from jarvis.autonomous_social import (
     run_autonomous_loop,
     run_autonomous_publication,
 )
-from jarvis.moltbook import API_BASE, MoltbookClient, MoltbookError
+from jarvis.moltbook import API_BASE, MoltbookClient, MoltbookError, contains_unapproved_link
 from jarvis.social_state import SocialState
 
 
@@ -269,3 +269,40 @@ def test_comment_skip_can_fall_back_to_one_original_post(tmp_path):
             )
     assert "submitted" in result
     create_post.assert_called_once()
+
+
+def test_owner_approved_exact_link_is_allowed_but_other_links_are_rejected():
+    approved = ("https://example.com/project",)
+    assert not contains_unapproved_link(
+        "Useful project: https://example.com/project", approved
+    )
+    assert contains_unapproved_link(
+        "Useful project: https://example.com/project.evil", approved
+    )
+    assert contains_unapproved_link(
+        "Also visit https://other.example/path", approved
+    )
+
+
+def test_client_allows_only_configured_link_in_comment():
+    approved = ("https://example.com/project",)
+    client = MoltbookClient("secret", approved_links=approved)
+    text = "A useful resource is https://example.com/project " + "x" * 40
+    with patch("jarvis.moltbook.urlopen", return_value=FakeResponse({"success": True})) as mocked:
+        client.create_comment("post-123", text)
+    assert mocked.call_count == 1
+    with pytest.raises(ValueError, match="owner-approved"):
+        client.create_comment("post-124", "Useful resource https://other.example/path " + "x" * 40)
+
+
+def test_model_decision_can_use_only_owner_approved_link():
+    posts = sample_posts()
+    approved = ("https://example.com/project",)
+    valid = json.dumps({
+        "action": "comment",
+        "post_id": "post-123",
+        "content": "This resource may help: https://example.com/project. " + "x" * 30,
+    })
+    assert parse_engagement_decision(valid, posts, approved) is not None
+    unapproved = valid.replace("https://example.com/project", "https://other.example/path")
+    assert parse_engagement_decision(unapproved, posts, approved) is None

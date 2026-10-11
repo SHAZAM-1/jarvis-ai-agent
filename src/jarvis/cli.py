@@ -180,7 +180,11 @@ def main() -> None:
                     "first. Never paste it into chat or commit it to Git."
                 )
                 continue
-            client = MoltbookClient(settings.moltbook_api_key, settings.request_timeout)
+            client = MoltbookClient(
+                settings.moltbook_api_key,
+                settings.request_timeout,
+                settings.approved_social_links,
+            )
 
             def analyze(posts: list[dict[str, str]]) -> str:
                 return llm.chat(build_analysis_messages(posts))
@@ -265,9 +269,9 @@ def main() -> None:
                 return run_autonomous_cycle(
                     client,
                     social_state,
-                    lambda posts: llm.chat(build_engagement_messages(posts)),
+                    lambda posts: llm.chat(build_engagement_messages(posts, client.approved_links)),
                     generate_publication=lambda posts: llm.chat(
-                        build_publication_messages(posts)
+                        build_publication_messages(posts, client.approved_links)
                     ),
                 )
 

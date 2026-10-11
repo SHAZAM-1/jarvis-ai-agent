@@ -11,7 +11,7 @@ from jarvis.moltbook import (
     MAX_COMMENT_LENGTH,
     MAX_POSTS,
     MoltbookClient,
-    contains_link,
+    contains_unapproved_link,
 )
 from jarvis.social_state import SocialState
 
@@ -33,7 +33,11 @@ _GENERIC_REPLIES = {
 }
 
 
-def parse_engagement_decision(raw: str, posts: list[dict[str, str]]) -> dict[str, str] | None:
+def parse_engagement_decision(
+    raw: str,
+    posts: list[dict[str, str]],
+    approved_links: tuple[str, ...] = (),
+) -> dict[str, str] | None:
     """Validate the local model's JSON against the current feed; invalid means skip."""
     try:
         decision = json.loads(raw)
@@ -54,7 +58,7 @@ def parse_engagement_decision(raw: str, posts: list[dict[str, str]]) -> dict[str
     cleaned = content.strip()
     if not 40 <= len(cleaned) <= MAX_COMMENT_LENGTH:
         return None
-    if contains_link(cleaned) or _CREDENTIAL_RE.search(cleaned):
+    if contains_unapproved_link(cleaned, approved_links) or _CREDENTIAL_RE.search(cleaned):
         return None
     if cleaned.casefold().strip(" .!?") in _GENERIC_REPLIES:
         return None
@@ -80,7 +84,9 @@ _ENGAGEMENT_BAIT_RE = re.compile(
 
 
 def parse_publication_decision(
-    raw: str, posts: list[dict[str, str]]
+    raw: str,
+    posts: list[dict[str, str]],
+    approved_links: tuple[str, ...] = (),
 ) -> dict[str, str] | None:
     """Validate original-post output and constrain its category to the observed feed."""
     try:
@@ -102,7 +108,7 @@ def parse_publication_decision(
     content = content.strip()
     if not 12 <= len(title) <= 160 or not 120 <= len(content) <= 1800:
         return None
-    if contains_link(title + " " + content):
+    if contains_unapproved_link(title + " " + content, approved_links):
         return None
     if _PUBLICATION_CREDENTIAL_RE.search(title + " " + content):
         return None
@@ -134,7 +140,7 @@ def run_autonomous_publication(
     on_status: Callable[[str], None] = print,
 ) -> str:
     """Publish at most one original post per rolling 24 hours, if genuinely useful."""
-    decision = parse_publication_decision(generate(posts), posts)
+    decision = parse_publication_decision(generate(posts), posts, client.approved_links)
     if decision is None:
         return "Publication decision failed validation; no post made."
     if decision["action"] == "skip":
@@ -176,7 +182,7 @@ def run_autonomous_cycle(
     if not posts:
         return "No public posts returned; no action taken."
     raw = generate(posts)
-    decision = parse_engagement_decision(raw, posts)
+    decision = parse_engagement_decision(raw, posts, client.approved_links)
     if decision is None:
         return "Model decision failed validation; no action taken."
     if decision["action"] == "skip":
