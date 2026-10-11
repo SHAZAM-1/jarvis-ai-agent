@@ -13,6 +13,7 @@ class Settings:
     model: str = "qwen3.5:2b"
     db_path: Path = Path("data/jarvis.db")
     request_timeout: float = 120.0
+    moltbook_api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -31,4 +32,5 @@ class Settings:
             raise ValueError("JARVIS_MODEL cannot be empty.")
         if timeout <= 0:
             raise ValueError("JARVIS_REQUEST_TIMEOUT must be greater than zero.")
-        return cls(url, model, db_path, timeout)
+        api_key = os.getenv("MOLTBOOK_API_KEY", "").strip() or None
+        return cls(url, model, db_path, timeout, api_key)
