@@ -133,3 +133,18 @@ def test_create_post_rejects_invalid_payloads(submolt, title, content):
 def test_client_rejects_non_finite_or_non_positive_timeout(timeout):
     with pytest.raises(ValueError, match="finite number greater than zero"):
         MoltbookClient("test-key", timeout=timeout)
+
+
+def test_fetch_posts_skips_malformed_post_ids_before_social_decisions():
+    client = MoltbookClient("test-key")
+    payload = {
+        "success": True,
+        "posts": [
+            {"id": "../outside", "title": "Bad ID", "content": "x" * 30},
+            {"id": "post-valid_123", "title": "Valid ID", "content": "x" * 30},
+            {"id": "x" * 161, "title": "Too long", "content": "x" * 30},
+        ],
+    }
+    with patch("jarvis.moltbook.urlopen", return_value=FakeResponse(payload)):
+        posts = client.fetch_posts()
+    assert [post["id"] for post in posts] == ["post-valid_123"]

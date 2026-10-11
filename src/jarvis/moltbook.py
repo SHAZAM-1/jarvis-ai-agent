@@ -123,9 +123,13 @@ class MoltbookClient:
             if isinstance(submolt, dict):
                 submolt = submolt.get("name", "")
             post_id = item.get("id") or item.get("post_id") or ""
+            cleaned_id = str(post_id)
+            # Exclude malformed IDs before they can consume an attempt or reach a URL path.
+            if not _POST_ID_RE.fullmatch(cleaned_id):
+                continue
             cleaned_posts.append(
                 {
-                    "id": str(post_id)[:160],
+                    "id": cleaned_id,
                     "title": title[:240],
                     "author": str(author or "unknown")[:100],
                     "submolt": str(submolt or "unknown")[:100],
