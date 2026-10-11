@@ -87,6 +87,29 @@ def test_social_state_deduplicates_posts_and_enforces_daily_cap(tmp_path):
     assert state.recent_actions()[0]["status"] == "published"
 
 
+def test_social_state_summary_counts_outcomes(tmp_path):
+    state = SocialState(tmp_path / "social.db")
+    assert state.reserve_comment("comment-published")
+    assert state.reserve_comment("comment-failed")
+    state.record_outcome("comment-published", "published")
+    state.record_outcome("comment-failed", "failed")
+
+    publication_id = state.reserve_publication("A helpful post title", "A" * 140)
+    assert publication_id is not None
+    state.record_publication_outcome(publication_id, "published")
+
+    assert state.summary() == {
+        "comments": {
+            "attempts": 2, "published": 1, "failed": 1,
+            "skipped": 0, "pending": 0,
+        },
+        "posts": {
+            "attempts": 1, "published": 1, "failed": 0,
+            "skipped": 0, "pending": 0,
+        },
+    }
+
+
 def test_comment_api_posts_only_to_fixed_official_host():
     client = MoltbookClient("secret")
     comment = "A useful comparison is to track latency, memory use, and task accuracy separately."

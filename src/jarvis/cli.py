@@ -42,6 +42,7 @@ def _print_help() -> None:
         "  /moltbook-loop [minutes]    Periodically analyze public posts; Ctrl+C stops\n"
         "  /moltbook-auto [minutes]    Opt-in autonomous replies; Ctrl+C stops\n"
         "  /social-history             Show recent autonomous social attempts\n"
+        "  /social-stats               Show saved comment/post outcome counts\n"
         "  /self-dev                   Run one guarded autonomous improvement cycle\n"
         "  /self-dev-loop [hours]      Repeat guarded self-development; default 24h; Ctrl+C stops\n"
         "  /clear                      Clear chat history (keeps learning notes)\n"
@@ -149,6 +150,17 @@ def main() -> None:
                     Event().wait(interval_hours * 60 * 60)
             except KeyboardInterrupt:
                 print("\nJarvis: Self-development loop stopped.")
+            continue
+        if command == "/social-stats":
+            summary = social_state.summary()
+            print("Jarvis: Saved social outcome summary (not views or reach):")
+            for action_type, label in (("comments", "Comments"), ("posts", "Original posts")):
+                counts = summary[action_type]
+                print(
+                    f"  {label}: attempts={counts['attempts']}, "
+                    f"published={counts['published']}, failed={counts['failed']}, "
+                    f"skipped={counts['skipped']}, pending={counts['pending']}"
+                )
             continue
         if command == "/social-history":
             actions = social_state.recent_actions()

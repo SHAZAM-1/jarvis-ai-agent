@@ -134,6 +134,24 @@ class SocialState:
                 (status, str(detail)[:240], publication_id),
             )
 
+    def summary(self) -> dict[str, dict[str, int]]:
+        """Return persistent counts for comment and original-post outcomes."""
+        summary: dict[str, dict[str, int]] = {}
+        with self._connect() as conn:
+            for action_type, table in (("comments", "social_actions"), ("posts", "social_publications")):
+                rows = conn.execute(
+                    f"SELECT status, COUNT(*) FROM {table} GROUP BY status"
+                ).fetchall()
+                counts = {status: int(count) for status, count in rows}
+                summary[action_type] = {
+                    "attempts": sum(counts.values()),
+                    "published": counts.get("published", 0),
+                    "failed": counts.get("failed", 0),
+                    "skipped": counts.get("skipped", 0),
+                    "pending": counts.get("reserved", 0),
+                }
+        return summary
+
     def recent_actions(self, limit: int = 20) -> list[dict[str, str]]:
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
