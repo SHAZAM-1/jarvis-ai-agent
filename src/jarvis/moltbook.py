@@ -123,7 +123,7 @@ class MoltbookClient:
         cleaned = content.strip()
         if not 40 <= len(cleaned) <= MAX_COMMENT_LENGTH:
             raise ValueError(f"Comment must be 40-{MAX_COMMENT_LENGTH} characters.")
-        if re.search(r"https?://|www\.", cleaned, flags=re.IGNORECASE):
+        if contains_link(cleaned):
             raise ValueError("Comments containing links are not sent automatically.")
         self._request(f"{API_BASE}/posts/{post_id}/comments", method="POST", body={"content": cleaned})
 
