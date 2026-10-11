@@ -16,10 +16,11 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        url = os.getenv("JARVIS_OLLAMA_URL", cls.ollama_url).strip().rstrip("/")
-        model = os.getenv("JARVIS_MODEL", cls.model).strip()
-        db_path = Path(os.getenv("JARVIS_DB_PATH", str(cls.db_path))).expanduser()
-        raw_timeout = os.getenv("JARVIS_REQUEST_TIMEOUT", str(cls.request_timeout))
+        defaults = cls()
+        url = os.getenv("JARVIS_OLLAMA_URL", defaults.ollama_url).strip().rstrip("/")
+        model = os.getenv("JARVIS_MODEL", defaults.model).strip()
+        db_path = Path(os.getenv("JARVIS_DB_PATH", str(defaults.db_path))).expanduser()
+        raw_timeout = os.getenv("JARVIS_REQUEST_TIMEOUT", str(defaults.request_timeout))
         try:
             timeout = float(raw_timeout)
         except ValueError as exc:
