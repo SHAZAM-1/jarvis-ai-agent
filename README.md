@@ -32,7 +32,6 @@ Jarvis is a modular personal AI assistant built in Python. The first phase focus
    .\.venv\Scripts\Activate.ps1
    python -m pip install --upgrade pip
    python -m pip install -e ".[dev]"
-   Copy-Item .env.example .env
    ```
 
 4. Start Jarvis:
@@ -47,7 +46,7 @@ If Ollama is not available, check that the Ollama application is running. To cha
 
 ## Configuration
 
-Environment variables are optional. Defaults use `http://localhost:11434`, model `qwen3.5:2b`, local database `data/jarvis.db`, and a 120-second request timeout. The app intentionally does not load a `.env` file automatically in this phase; set environment variables in PowerShell or use a later configuration enhancement. Never commit API keys or real credentials.
+Environment variables are optional. Defaults use `http://localhost:11434`, model `qwen3.5:2b`, local database `data/jarvis.db`, and a 120-second request timeout. The app intentionally does not load a `.env` file automatically in this phase; set environment variables in PowerShell. `.env.example` documents the supported names but is not loaded automatically. Never commit API keys or real credentials.
 
 ## Run tests
 
