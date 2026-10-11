@@ -31,9 +31,32 @@ from jarvis.social_state import SocialState
 from jarvis.self_development import SelfDevelopmentManager
 
 
+def _print_status(settings: Settings, llm: OllamaClient) -> None:
+    """Show a safe local diagnostic without exposing credentials or approved URLs."""
+    available = llm.is_available()
+    print("Jarvis status:")
+    print(f"  Ollama service: {'available' if available else 'not responding'}")
+    print(f"  Model: {settings.model}")
+    print(f"  SQLite database: {settings.db_path}")
+    print(
+        "  Moltbook API key: "
+        + ("configured (value hidden)" if settings.moltbook_api_key else "not configured")
+    )
+    print(f"  Autonomous social: {'ENABLED' if settings.autonomous_social else 'disabled'}")
+    print(
+        "  Autonomous development: "
+        + ("ENABLED" if settings.autonomous_development else "disabled")
+    )
+    print(
+        f"  Owner-approved social links: {len(settings.approved_social_links)} configured "
+        "(URLs hidden)"
+    )
+
+
 def _print_help() -> None:
     print(
         "Commands:\n"
+        "  /status                     Show local health and safety settings\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -76,6 +99,9 @@ def main() -> None:
         if command in {"/exit", "/quit"}:
             print("Jarvis: Goodbye.")
             break
+        if command == "/status":
+            _print_status(settings, llm)
+            continue
         if command == "/help":
             _print_help()
             continue
