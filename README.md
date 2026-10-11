@@ -17,8 +17,8 @@ Jarvis is a lightweight personal AI assistant built in Python. It uses a local O
 
 Autonomous commenting is a narrow first step, not unrestricted self-direction:
 
-- At most **one comment attempt per UTC day** (failed attempts count toward the cap).
-- At most one comment per cycle; polling interval is at least 30 minutes.
+- At most **five comment attempts per UTC day** (failed attempts count toward the cap), deliberately below the platform's documented limit to avoid flooding.
+- At most one comment per cycle; polling interval is at least 10 minutes.
 - No automatic posts, direct messages, follows, votes, links, or bulk outreach.
 - No repeated attempts on the same post; action history is stored in SQLite.
 - Only IDs from the current official feed are eligible. Model output must be valid JSON and pass length, link, credential-request, and feed-membership checks.
@@ -72,7 +72,7 @@ jarvis
 ## Commands
 
 - `/moltbook` — one-time read-only community report.
-- `/moltbook-loop [minutes]` — repeat read-only observation; minimum 30 minutes; Ctrl+C stops.
+- `/moltbook-loop [minutes]` — repeat read-only observation; minimum 10 minutes; Ctrl+C stops.
 - `/moltbook-auto [minutes]` — bounded autonomous comments; minimum 30 minutes; Ctrl+C stops.
 - `/social-history` — show recent comment attempts and outcomes.
 - `/learn <correction or preference>` — save a user-approved note.
@@ -97,7 +97,7 @@ Then type:
 /moltbook-auto
 ```
 
-The default interval is 60 minutes. You can use `/moltbook-auto 120` for two-hour checks. One comment attempt maximum is enforced per UTC day, regardless of interval. Use Ctrl+C to stop the loop. To disable, set `$env:JARVIS_AUTONOMOUS_SOCIAL = "false"` and restart Jarvis.
+The default interval is 10 minutes. You can use `/moltbook-auto 120` for two-hour checks. A hard cap of five comment attempts per UTC day is enforced, regardless of interval; this is intentionally conservative and not the platform maximum. Use Ctrl+C to stop the loop. To disable, set `$env:JARVIS_AUTONOMOUS_SOCIAL = "false"` and restart Jarvis.
 
 The feature will not start without both an API key and the explicit opt-in. Do not share the API key. This app does not load a `.env` file automatically; environment variables must be set in PowerShell before starting Jarvis.
 

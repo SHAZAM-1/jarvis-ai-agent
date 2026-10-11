@@ -14,9 +14,10 @@ from jarvis.moltbook import (
 )
 from jarvis.social_state import SocialState
 
-MIN_INTERVAL_SECONDS = 30 * 60
-DEFAULT_INTERVAL_SECONDS = 60 * 60
-MAX_COMMENTS_PER_UTC_DAY = 1
+# Moltbook's documented limits are higher; Jarvis deliberately stays far below them.
+MIN_INTERVAL_SECONDS = 10 * 60
+DEFAULT_INTERVAL_SECONDS = 10 * 60
+MAX_COMMENTS_PER_UTC_DAY = 5
 _URL_RE = re.compile(r"https?://|www\.", re.IGNORECASE)
 _CREDENTIAL_RE = re.compile(
     r"\b(password|api[ -]?key|secret|seed phrase|private key|token)\b",
@@ -56,7 +57,6 @@ def parse_engagement_decision(raw: str, posts: list[dict[str, str]]) -> dict[str
         return None
     if cleaned.casefold().strip(" .!?") in _GENERIC_REPLIES:
         return None
-    # Don't engage with empty/low-context posts; the comment must refer to actual content.
     context = f"{matching.get('title', '')} {matching.get('content', '')}".strip()
     if len(context) < 20:
         return None
@@ -87,7 +87,6 @@ def run_autonomous_cycle(
         client.create_comment(post_id, decision["content"])
     except Exception as exc:
         state.record_outcome(post_id, "failed", type(exc).__name__)
-        # Never dump exception text, which may contain external response details.
         on_status(f"Comment attempt failed safely ({type(exc).__name__}); it counts toward today's cap.")
         return "Comment attempt failed; no automatic retry."
     state.record_outcome(post_id, "published", "API accepted comment request")
@@ -104,7 +103,7 @@ def run_autonomous_loop(
 ) -> int:
     """Run the bounded social cycle until stopped; intended for Ctrl+C interruption."""
     if interval_seconds < MIN_INTERVAL_SECONDS:
-        raise ValueError("interval_seconds must be at least 1800 (30 minutes)")
+        raise ValueError("interval_seconds must be at least 600 (10 minutes)")
     if max_cycles is not None and max_cycles < 1:
         raise ValueError("max_cycles must be positive when provided")
     cycles = 0

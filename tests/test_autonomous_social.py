@@ -5,6 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from jarvis.autonomous_social import DEFAULT_INTERVAL_SECONDS, MAX_COMMENTS_PER_UTC_DAY, MIN_INTERVAL_SECONDS, run_autonomous_loop
+from threading import Event
+
 from jarvis.autonomous_social import parse_engagement_decision, run_autonomous_cycle
 from jarvis.moltbook import API_BASE, MoltbookClient, MoltbookError
 from jarvis.social_state import SocialState
@@ -114,3 +117,31 @@ def test_api_failure_is_not_retried_and_attempt_is_recorded(tmp_path):
     assert "no automatic retry" in result
     post.assert_called_once()
     assert state.recent_actions()[0]["status"] == "failed"
+
+
+
+def test_autonomous_social_uses_ten_minute_floor_and_five_comment_daily_cap():
+    assert MIN_INTERVAL_SECONDS == 600
+    assert DEFAULT_INTERVAL_SECONDS == 600
+    assert MAX_COMMENTS_PER_UTC_DAY == 5
+
+
+def test_autonomous_loop_rejects_interval_below_ten_minutes():
+    with pytest.raises(ValueError, match="at least 600"):
+        run_autonomous_loop(
+            lambda: "noop",
+            stop_event=Event(),
+            on_status=lambda _: None,
+            interval_seconds=599,
+            max_cycles=1,
+        )
+
+
+def test_autonomous_loop_accepts_ten_minute_interval():
+    assert run_autonomous_loop(
+        lambda: "noop",
+        stop_event=Event(),
+        on_status=lambda _: None,
+        interval_seconds=600,
+        max_cycles=1,
+    ) == 1

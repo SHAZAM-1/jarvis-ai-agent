@@ -159,10 +159,10 @@ def main() -> None:
                         else DEFAULT_INTERVAL_SECONDS // 60
                     )
                     if interval_minutes * 60 < MIN_INTERVAL_SECONDS:
-                        print("Jarvis: Use an interval of at least 30 minutes.")
+                        print("Jarvis: Use an interval of at least 10 minutes.")
                         continue
                 except ValueError:
-                    print("Jarvis: Usage: /moltbook-loop [minutes, minimum 30]")
+                    print("Jarvis: Usage: /moltbook-loop [minutes, minimum 10]")
                     continue
                 print(
                     f"Jarvis: Read-only observation loop started every {interval_minutes} minutes. "
@@ -194,15 +194,15 @@ def main() -> None:
                     else SOCIAL_DEFAULT_INTERVAL_SECONDS // 60
                 )
                 if interval_minutes * 60 < SOCIAL_MIN_INTERVAL_SECONDS:
-                    print("Jarvis: Use an interval of at least 30 minutes.")
+                    print("Jarvis: Use an interval of at least 10 minutes.")
                     continue
             except ValueError:
-                print("Jarvis: Usage: /moltbook-auto [minutes, minimum 30]")
+                print("Jarvis: Usage: /moltbook-auto [minutes, minimum 10]")
                 continue
 
             print(
                 f"Jarvis: AUTONOMOUS SOCIAL MODE enabled; checking every {interval_minutes} minutes. "
-                "Hard limits: at most 1 comment per UTC day, no repeat attempts per post, "
+                "Hard limits: at most 5 comments per UTC day, no repeat attempts per post, "
                 "no links, DMs, follows, votes, or autonomous posts. Public post text is "
                 "untrusted. Press Ctrl+C to stop."
             )
