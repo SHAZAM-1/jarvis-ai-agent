@@ -63,14 +63,114 @@ def parse_engagement_decision(raw: str, posts: list[dict[str, str]]) -> dict[str
     return {"action": "comment", "post_id": post_id, "content": cleaned}
 
 
+
+_PUBLICATION_CREDENTIAL_RE = re.compile(
+    r"\b(password|api[ -]?key|secret|seed phrase|private key|token)\b",
+    re.IGNORECASE,
+)
+_FALSE_EXPERIENCE_RE = re.compile(
+    r"\b(i (personally )?(built|created|tested|used|discovered|experienced|visited))\b",
+    re.IGNORECASE,
+)
+_ENGAGEMENT_BAIT_RE = re.compile(
+    r"\b(follow me|upvote|like and share|dm me|message me for|subscribe to me)\b",
+    re.IGNORECASE,
+)
+
+
+def parse_publication_decision(
+    raw: str, posts: list[dict[str, str]]
+) -> dict[str, str] | None:
+    """Validate original-post output and constrain its category to the observed feed."""
+    try:
+        decision = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(decision, dict):
+        return None
+    if decision.get("action") == "skip":
+        return {"action": "skip", "submolt": "", "title": "", "content": ""}
+    title = decision.get("title")
+    content = decision.get("content")
+    submolt = decision.get("submolt")
+    if decision.get("action") != "publish":
+        return None
+    if not all(isinstance(value, str) for value in (title, content, submolt)):
+        return None
+    title = title.strip()
+    content = content.strip()
+    if not 12 <= len(title) <= 160 or not 120 <= len(content) <= 1800:
+        return None
+    if _URL_RE.search(title + " " + content):
+        return None
+    if _PUBLICATION_CREDENTIAL_RE.search(title + " " + content):
+        return None
+    if _FALSE_EXPERIENCE_RE.search(title + " " + content):
+        return None
+    if _ENGAGEMENT_BAIT_RE.search(title + " " + content):
+        return None
+    allowed_submolts = {
+        post.get("submolt", "").casefold()
+        for post in posts
+        if isinstance(post.get("submolt"), str) and post.get("submolt")
+    }
+    if not submolt or submolt.casefold() not in allowed_submolts:
+        return None
+    return {
+        "action": "publish",
+        "submolt": submolt,
+        "title": title,
+        "content": content,
+    }
+
+
+def run_autonomous_publication(
+    client: MoltbookClient,
+    state: SocialState,
+    posts: list[dict[str, str]],
+    generate: Callable[[list[dict[str, str]]], str],
+    *,
+    on_status: Callable[[str], None] = print,
+) -> str:
+    """Publish at most one original post per rolling 24 hours, if genuinely useful."""
+    decision = parse_publication_decision(generate(posts), posts)
+    if decision is None:
+        return "Publication decision failed validation; no post made."
+    if decision["action"] == "skip":
+        return "No sufficiently useful original post was identified; skipped."
+    publication_id = state.reserve_publication(
+        decision["title"], decision["content"], cooldown_hours=24
+    )
+    if publication_id is None:
+        return "Post cooldown or duplicate-content guard blocked publication."
+    try:
+        client.create_post(
+            decision["submolt"], decision["title"], decision["content"]
+        )
+    except Exception as exc:
+        state.record_publication_outcome(
+            publication_id, "failed", type(exc).__name__
+        )
+        on_status(
+            f"Post attempt failed safely ({type(exc).__name__}); no automatic retry."
+        )
+        return "Post attempt failed; no automatic retry."
+    state.record_publication_outcome(
+        publication_id, "published", "API accepted post request"
+    )
+    return f"Original post submitted to {decision['submolt']}."
+
+
+
 def run_autonomous_cycle(
     client: MoltbookClient,
     state: SocialState,
     generate: Callable[[list[dict[str, str]]], str],
     *,
     on_status: Callable[[str], None] = print,
+    generate_publication: Callable[[list[dict[str, str]]], str] | None = None,
 ) -> str:
-    """Fetch, decide, validate and at most attempt one comment for this cycle."""
+    """Fetch, decide, validate and at most perform one social action per cycle."""
     posts = client.fetch_posts(limit=MAX_POSTS, sort="new")
     if not posts:
         return "No public posts returned; no action taken."
@@ -79,6 +179,10 @@ def run_autonomous_cycle(
     if decision is None:
         return "Model decision failed validation; no action taken."
     if decision["action"] == "skip":
+        if generate_publication is not None:
+            return run_autonomous_publication(
+                client, state, posts, generate_publication, on_status=on_status
+            )
         return "No post clearly merited a reply; skipped."
     post_id = decision["post_id"]
     if not state.reserve_comment(post_id, daily_limit=MAX_COMMENTS_PER_UTC_DAY):

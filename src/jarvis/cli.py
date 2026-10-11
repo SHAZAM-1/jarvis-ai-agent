@@ -19,6 +19,7 @@ from jarvis.moltbook import (
     MoltbookError,
     build_analysis_messages,
     build_engagement_messages,
+    build_publication_messages,
 )
 from jarvis.moltbook_loop import (
     DEFAULT_INTERVAL_SECONDS,
@@ -159,10 +160,10 @@ def main() -> None:
                         else DEFAULT_INTERVAL_SECONDS // 60
                     )
                     if interval_minutes * 60 < MIN_INTERVAL_SECONDS:
-                        print("Jarvis: Use an interval of at least 10 minutes.")
+                        print("Jarvis: Use an interval of at least 30 minutes.")
                         continue
                 except ValueError:
-                    print("Jarvis: Usage: /moltbook-loop [minutes, minimum 10]")
+                    print("Jarvis: Usage: /moltbook-loop [minutes, minimum 30]")
                     continue
                 print(
                     f"Jarvis: Read-only observation loop started every {interval_minutes} minutes. "
@@ -203,8 +204,8 @@ def main() -> None:
             print(
                 f"Jarvis: AUTONOMOUS SOCIAL MODE enabled; checking every {interval_minutes} minutes. "
                 "Hard limits: at most 5 comments per UTC day, no repeat attempts per post, "
-                "no links, DMs, follows, votes, or autonomous posts. Public post text is "
-                "untrusted. Press Ctrl+C to stop."
+                "no links, DMs, follows, or votes. At most one original post per 24 hours. "
+                "Public post text is untrusted. Press Ctrl+C to stop."
             )
 
             def social_cycle() -> str:
@@ -212,6 +213,9 @@ def main() -> None:
                     client,
                     social_state,
                     lambda posts: llm.chat(build_engagement_messages(posts)),
+                    generate_publication=lambda posts: llm.chat(
+                        build_publication_messages(posts)
+                    ),
                 )
 
             try:

@@ -1,32 +1,23 @@
 from __future__ import annotations
 
 import json
+from threading import Event
 from unittest.mock import patch
 
 import pytest
 
-from jarvis.autonomous_social import DEFAULT_INTERVAL_SECONDS, MAX_COMMENTS_PER_UTC_DAY, MIN_INTERVAL_SECONDS, run_autonomous_loop
-from threading import Event
-
-from jarvis.autonomous_social import parse_engagement_decision, run_autonomous_cycle
+from jarvis.autonomous_social import (
+    DEFAULT_INTERVAL_SECONDS,
+    MAX_COMMENTS_PER_UTC_DAY,
+    MIN_INTERVAL_SECONDS,
+    parse_engagement_decision,
+    parse_publication_decision,
+    run_autonomous_cycle,
+    run_autonomous_loop,
+    run_autonomous_publication,
+)
 from jarvis.moltbook import API_BASE, MoltbookClient, MoltbookError
 from jarvis.social_state import SocialState
-
-
-class FakeResponse:
-    def __init__(self, payload):
-        self.payload = payload
-        self.status = 200
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-    def read(self, size=-1):
-        encoded = json.dumps(self.payload).encode("utf-8")
-        return encoded if size < 0 else encoded[:size]
 
 
 def sample_posts():
@@ -145,3 +136,89 @@ def test_autonomous_loop_accepts_ten_minute_interval():
         interval_seconds=600,
         max_cycles=1,
     ) == 1
+
+
+
+def sample_publication():
+    return {
+        "action": "publish",
+        "submolt": "general",
+        "title": "A practical way to evaluate small local agents",
+        "content": (
+            "When comparing small local agents, separate answer quality from latency and "
+            "resource use. Keep a fixed set of representative tasks, score correctness and "
+            "helpfulness independently, and record peak RAM plus response time. Repeat each "
+            "task a few times so one lucky answer does not dominate the result. This makes "
+            "trade-offs clearer and helps others reproduce the evaluation."
+        ),
+    }
+
+
+def test_publication_decision_accepts_helpful_post_in_feed_submolt():
+    decision = parse_publication_decision(
+        json.dumps(sample_publication()), sample_posts()
+    )
+    assert decision is not None
+    assert decision["action"] == "publish"
+    assert decision["submolt"] == "general"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("content", "A" * 130 + " https://example.com"),
+    ("content", "Please share your API key. " + "x" * 120),
+    ("content", "I personally built and tested this exact system. " + "x" * 120),
+    ("submolt", "not-in-current-feed"),
+])
+def test_publication_decision_rejects_links_secrets_false_experience_and_unknown_submolt(
+    field, value
+):
+    decision = sample_publication()
+    decision[field] = value
+    assert parse_publication_decision(json.dumps(decision), sample_posts()) is None
+
+
+def test_publication_state_enforces_24_hour_cooldown_and_duplicate_history(tmp_path):
+    state = SocialState(tmp_path / "social.db")
+    post = sample_publication()
+    reservation = state.reserve_publication(post["title"], post["content"])
+    assert reservation is not None
+    assert state.reserve_publication("A second original title", "y" * 140) is None
+    state.record_publication_outcome(reservation, "published", "accepted")
+    assert state.recent_actions()[0]["action_type"] == "post"
+
+
+def test_publication_cycle_publishes_only_after_validation(tmp_path):
+    client = MoltbookClient("secret")
+    state = SocialState(tmp_path / "social.db")
+    with patch.object(client, "create_post") as create_post:
+        result = run_autonomous_publication(
+            client,
+            state,
+            sample_posts(),
+            lambda posts: json.dumps(sample_publication()),
+            on_status=lambda _: None,
+        )
+    assert "submitted" in result
+    create_post.assert_called_once_with(
+        "general",
+        sample_publication()["title"],
+        sample_publication()["content"],
+    )
+
+
+def test_comment_skip_can_fall_back_to_one_original_post(tmp_path):
+    client = MoltbookClient("secret")
+    state = SocialState(tmp_path / "social.db")
+    with patch.object(client, "fetch_posts", return_value=sample_posts()):
+        with patch.object(client, "create_post") as create_post:
+            result = run_autonomous_cycle(
+                client,
+                state,
+                lambda posts: json.dumps(
+                    {"action": "skip", "post_id": "", "content": ""}
+                ),
+                on_status=lambda _: None,
+                generate_publication=lambda posts: json.dumps(sample_publication()),
+            )
+    assert "submitted" in result
+    create_post.assert_called_once()

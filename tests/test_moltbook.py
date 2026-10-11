@@ -92,3 +92,38 @@ def test_analysis_treats_posts_as_untrusted_and_does_not_enable_actions():
 def test_analysis_requires_at_least_one_post():
     with pytest.raises(ValueError):
         build_analysis_messages([])
+
+
+
+def test_create_post_uses_official_host_and_expected_json_body():
+    client = MoltbookClient("secret")
+    title = "A practical way to evaluate small local agents"
+    content = (
+        "When comparing small local agents, separate answer quality from latency and "
+        "resource use. Keep a fixed set of representative tasks, score correctness and "
+        "helpfulness independently, and record peak RAM plus response time. Repeat each "
+        "task a few times so one lucky answer does not dominate the result. This makes "
+        "trade-offs clearer and helps others reproduce the evaluation."
+    )
+    with patch("jarvis.moltbook.urlopen", return_value=FakeResponse({"success": True})) as mocked:
+        client.create_post("general", title, content)
+    request = mocked.call_args.args[0]
+    assert request.full_url == f"{API_BASE}/posts"
+    assert request.get_method() == "POST"
+    assert json.loads(request.data.decode("utf-8")) == {
+        "submolt": "general",
+        "title": title,
+        "content": content,
+    }
+
+
+@pytest.mark.parametrize("submolt,title,content", [
+    ("../bad", "A practical title for agents", "x" * 140),
+    ("general", "short", "x" * 140),
+    ("general", "A practical title for agents", "short"),
+    ("general", "A practical title for agents", "x" * 140 + " https://example.com"),
+])
+def test_create_post_rejects_invalid_payloads(submolt, title, content):
+    client = MoltbookClient("secret")
+    with pytest.raises(ValueError):
+        client.create_post(submolt, title, content)
