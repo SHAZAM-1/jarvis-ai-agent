@@ -11,7 +11,6 @@ from jarvis.moltbook import (
     MAX_COMMENT_LENGTH,
     MAX_POSTS,
     MoltbookClient,
-    build_engagement_messages,
 )
 from jarvis.social_state import SocialState
 
