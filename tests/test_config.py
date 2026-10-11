@@ -104,3 +104,20 @@ def test_non_finite_or_non_positive_timeout_is_rejected(monkeypatch, value):
     monkeypatch.setenv("JARVIS_REQUEST_TIMEOUT", value)
     with pytest.raises(ValueError, match="finite number greater than zero"):
         Settings.from_env()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://",
+        "https:///path",
+        "http://localhost:badport",
+        "http://user:password@localhost:11434",
+        "http://localhost:11434?debug=1",
+        "http://localhost:11434#fragment",
+    ],
+)
+def test_malformed_or_credential_bearing_ollama_urls_are_rejected(monkeypatch, value):
+    monkeypatch.setenv("JARVIS_OLLAMA_URL", value)
+    with pytest.raises(ValueError, match="JARVIS_OLLAMA_URL"):
+        Settings.from_env()

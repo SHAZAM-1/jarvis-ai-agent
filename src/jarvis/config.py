@@ -43,8 +43,23 @@ class Settings:
             timeout = float(raw_timeout)
         except ValueError as exc:
             raise ValueError("JARVIS_REQUEST_TIMEOUT must be a number.") from exc
-        if not url.startswith(("http://", "https://")):
-            raise ValueError("JARVIS_OLLAMA_URL must start with http:// or https://.")
+        try:
+            parsed_url = urlsplit(url)
+            parsed_url.port  # Force validation of any explicit port.
+        except ValueError as exc:
+            raise ValueError("JARVIS_OLLAMA_URL must be a valid HTTP(S) URL.") from exc
+        if (
+            parsed_url.scheme not in {"http", "https"}
+            or not parsed_url.hostname
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_url.query
+            or parsed_url.fragment
+        ):
+            raise ValueError(
+                "JARVIS_OLLAMA_URL must be a valid HTTP(S) URL without credentials, "
+                "query parameters, or fragments."
+            )
         if not model:
             raise ValueError("JARVIS_MODEL cannot be empty.")
         if not math.isfinite(timeout) or timeout <= 0:
