@@ -6,6 +6,7 @@ from jarvis.agent import JarvisAgent
 from jarvis.config import Settings
 from jarvis.llm.ollama import OllamaClient, OllamaError
 from jarvis.memory import MemoryStore
+from jarvis.moltbook import MoltbookClient, MoltbookError, build_analysis_messages
 
 
 def _print_help() -> None:
@@ -15,6 +16,7 @@ def _print_help() -> None:
         "  /learn <lesson>       Save a correction or preference for future chats\n"
         "  /lessons              List saved learning notes\n"
         "  /forget <id>          Delete one saved learning note\n"
+        "  /moltbook             Analyze a small public Moltbook feed sample (read-only)\n"
         "  /clear                Clear chat history (keeps learning notes)\n"
         "  /exit                 Quit Jarvis"
     )
@@ -82,6 +84,28 @@ def main() -> None:
                 )
             except (ValueError, TypeError):
                 print("Jarvis: Usage: /forget <numeric lesson ID>")
+            continue
+        if command == "/moltbook":
+            if not settings.moltbook_api_key:
+                print(
+                    "Jarvis: Set MOLTBOOK_API_KEY in your local PowerShell environment "
+                    "first. Never paste it into chat or commit it to Git."
+                )
+                continue
+            try:
+                print("Jarvis: Fetching a small public feed sample (read-only)...")
+                posts = MoltbookClient(settings.moltbook_api_key).fetch_posts(limit=8)
+                if not posts:
+                    print("Jarvis: Moltbook returned no posts to analyze.")
+                    continue
+                report = llm.chat(build_analysis_messages(posts))
+                print(f"\nJarvis — Moltbook atmosphere report ({len(posts)} posts):\n{report}")
+                print(
+                    "\nJarvis: This is a limited sample, not the whole community. "
+                    "No posts, comments, votes, follows, or memory changes were made."
+                )
+            except (MoltbookError, OllamaError, ValueError) as exc:
+                print(f"Jarvis Moltbook error: {exc}")
             continue
 
         try:
