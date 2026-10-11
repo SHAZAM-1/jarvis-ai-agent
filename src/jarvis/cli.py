@@ -101,7 +101,10 @@ def main() -> None:
                 )
                 continue
             client = MoltbookClient(settings.moltbook_api_key)
-            analyze = lambda posts: llm.chat(build_analysis_messages(posts))
+
+            def analyze(posts: list[dict[str, str]]) -> str:
+                return llm.chat(build_analysis_messages(posts))
+
             if command == "/moltbook":
                 try:
                     print("Jarvis: Fetching a small public feed sample (read-only)...")
@@ -110,7 +113,10 @@ def main() -> None:
                         print("Jarvis: Moltbook returned no posts to analyze.")
                         continue
                     report = analyze(posts)
-                    print(f"\nJarvis — Moltbook atmosphere report ({len(posts)} posts):\n{report}")
+                    print(
+                        f"\nJarvis — Moltbook atmosphere report "
+                        f"({len(posts)} posts):\n{report}"
+                    )
                     print(
                         "\nJarvis: This is a limited sample, not the whole community. "
                         "No posts, comments, votes, follows, or memory changes were made."
@@ -126,7 +132,10 @@ def main() -> None:
                     else DEFAULT_INTERVAL_SECONDS // 60
                 )
                 if interval_minutes * 60 < MIN_INTERVAL_SECONDS:
-                    print("Jarvis: Use an interval of at least 30 minutes to avoid spammy polling.")
+                    print(
+                        "Jarvis: Use an interval of at least 30 minutes "
+                        "to avoid spammy polling."
+                    )
                     continue
             except ValueError:
                 print("Jarvis: Usage: /moltbook-loop [minutes, minimum 30]")
