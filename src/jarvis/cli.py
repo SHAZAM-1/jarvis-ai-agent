@@ -31,6 +31,7 @@ from jarvis.social_state import SocialState
 from jarvis.self_development import SelfDevelopmentManager
 from jarvis.health_check import ProjectHealthCheckAgent
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
+from jarvis.project_mesh import ProjectCrawler, ProjectMesh
 
 
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
@@ -83,7 +84,9 @@ def main() -> None:
     memory = MemoryStore(settings.db_path)
     social_state = SocialState(settings.db_path)
     guardian = ProjectGuardian(llm, settings.db_path)
-    agent = JarvisAgent(llm, memory, guardian=guardian)
+    mesh = ProjectMesh(settings.db_path)
+    crawler = ProjectCrawler(llm, Path(__file__).resolve().parents[2], mesh)
+    agent = JarvisAgent(llm, memory, guardian=guardian, mesh=mesh)
 
     print("Jarvis AI Agent — local mode")
     print(f"Model: {settings.model}")
@@ -121,6 +124,7 @@ def main() -> None:
                 Path(__file__).resolve().parents[2],
                 model_name=settings.model,
                 guardian=guardian,
+                mesh=mesh,
             )
             print("Jarvis: Starting read-only project health analysis. This may take a few minutes.")
             print(health_agent.run())
