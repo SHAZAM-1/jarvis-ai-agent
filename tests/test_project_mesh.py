@@ -14,12 +14,14 @@ class FakeLLM:
         self.response = response or json.dumps({"findings": []})
         self.available = available
         self.calls = 0
+        self.messages = []
 
     def is_available(self) -> bool:
         return self.available
 
     def chat(self, messages):
         self.calls += 1
+        self.messages.append(messages)
         return self.response
 
 
@@ -81,3 +83,28 @@ def test_crawler_context_is_bounded_and_status_is_honest(tmp_path):
 
     assert "no crawl recorded yet" in status
     assert "preliminary finding" in mesh.context_for("self-dev")
+
+
+def test_specialist_uses_crawler_output_schema_and_shares_findings(tmp_path):
+    response = json.dumps(
+        {
+            "findings": [
+                {
+                    "severity": "medium",
+                    "summary": "Missing input validation in the example.",
+                    "evidence": "value is used before validation",
+                }
+            ]
+        }
+    )
+    llm = FakeLLM(response)
+    mesh = ProjectMesh(tmp_path / "mesh.sqlite3")
+    crawler = ProjectCrawler(llm, tmp_path, mesh)
+
+    result = crawler._analyze(
+        ("refs/heads/main", "src/example.py", "tests and correctness", "value = input()")
+    )
+
+    assert result[4] == 1
+    assert "required output schema" in llm.messages[0][0]["content"]
+    assert "Missing input validation" in mesh.context_for("health-check")
