@@ -10,12 +10,14 @@ class FakeLLM:
     def __init__(self, available: bool = True) -> None:
         self.available = available
         self.messages = None
+        self.calls: list[list[dict[str, str]]] = []
 
     def is_available(self) -> bool:
         return self.available
 
     def chat(self, messages: list[dict[str, str]]) -> str:
         self.messages = messages
+        self.calls.append(messages)
         return "Status: one test finding; prioritize the smallest safe fix."
 
 
@@ -52,15 +54,19 @@ def test_health_check_inventories_files_and_contacts_local_model(tmp_path):
     report = agent.run(run_quality_gates=False)
 
     assert "JARVIS PROJECT HEALTH CHECK" in report
-    assert "Tracked files inventoried: 2" in report
+    assert "project paths inventoried: 2" in report
     assert "read-only diagnosis" in report
     assert "one test finding" in report
     assert llm.messages is not None
-    prompt = llm.messages[1]["content"]
-    assert "sample.py" in prompt
-    assert "RECENT HISTORY ACROSS REFS" in prompt
-    assert "private-test-token-value" not in prompt
-    assert "[REDACTED]" in prompt
+    prompts = "\\n".join(
+        message["content"]
+        for call in llm.calls
+        for message in call
+    )
+    assert "sample.py" in prompts
+    assert "RECENT HISTORY ACROSS REFS" in prompts
+    assert "private-test-token-value" not in prompts
+    assert "[REDACTED]" in prompts
     assert _git(root, "status", "--porcelain") == ""
 
 
