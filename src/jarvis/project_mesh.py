@@ -7,6 +7,7 @@ commands are ever executed. Repository content is untrusted data.
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
 import json
 import re
 import sqlite3
@@ -279,21 +280,39 @@ class ProjectCrawler:
         )
         tasks: list[tuple[str, str, str, str]] = []
         skipped = 0
+        deduplicated = 0
         total_chars = 0
-        for ref in refs:
-            for path in self._paths_for_ref(ref):
+        paths_by_ref = {ref: self._paths_for_ref(ref) for ref in refs}
+        seen_snapshots: set[tuple[str, str]] = set()
+        limit_reached = False
+        max_paths = max((len(paths) for paths in paths_by_ref.values()), default=0)
+        # Round-robin refs so one large branch cannot starve the remaining branches.
+        for offset in range(max_paths):
+            for ref in refs:
+                ref_paths = paths_by_ref[ref]
+                if offset >= len(ref_paths):
+                    continue
                 if len(tasks) >= MAX_TASKS:
-                    skipped += 1
+                    limit_reached = True
                     break
+                path = ref_paths[offset]
                 content = self._read_ref_file(ref, path)
                 if content is None:
                     skipped += 1
                     continue
+                digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                snapshot_key = (path, digest)
+                if snapshot_key in seen_snapshots:
+                    deduplicated += 1
+                    continue
                 if total_chars + len(content) > MAX_TOTAL_CHARS:
                     skipped += 1
                     continue
+                seen_snapshots.add(snapshot_key)
                 total_chars += len(content)
                 tasks.append((ref, path, roles[len(tasks) % len(roles)], content))
+            if limit_reached:
+                break
         if not tasks:
             raise RuntimeError("No eligible text files found within crawler safety limits.")
         self.mesh.publish("crawler-coordinator", "crawl-started", f"Scanning {len(refs)} refs, {len(tasks)} bounded file snapshots; skipped {skipped}.", kind="request")
@@ -311,7 +330,13 @@ class ProjectCrawler:
         result = CrawlResult(
             refs_seen=len(refs), files_seen=len(tasks), chunks_reviewed=len(tasks),
             findings=findings, skipped=skipped + errors,
-            summary=f"Concurrent crawl complete: {len(refs)} refs, {len(tasks)} file snapshots, {findings} new findings, {skipped} skipped, {errors} worker errors. Results require verification; crawl does not modify Git or files.",
+            summary=(
+                f"Concurrent crawl complete: {len(refs)} refs inventoried, {len(tasks)} unique file snapshots reviewed, "
+                f"{deduplicated} identical path/content snapshots deduplicated, {findings} new findings, "
+                f"{skipped} skipped, {errors} worker errors. "
+                + ("Task cap reached; remaining snapshots were not AI-reviewed. " if limit_reached else "")
+                + "Results require verification; crawl does not modify Git or files."
+            ),
         )
         self.mesh.save_crawl(result)
         self.mesh.publish("crawler-coordinator", "crawl-complete", result.summary, kind="answer")
