@@ -58,7 +58,7 @@ def test_health_check_inventories_files_and_contacts_local_model(tmp_path):
     assert "read-only diagnosis" in report
     assert "one test finding" in report
     assert llm.messages is not None
-    prompts = "\\n".join(
+    prompts = "\n".join(
         message["content"]
         for call in llm.calls
         for message in call
@@ -78,6 +78,21 @@ def test_health_check_skips_model_when_local_ollama_is_unavailable(tmp_path):
     assert "PARTIAL" in report
     assert "Ollama is not responding" in report
     assert llm.messages is None
+
+
+def test_health_check_refuses_remote_model_endpoint(tmp_path):
+    root = _repo(tmp_path)
+
+    class RemoteLLM(FakeLLM):
+        base_url = "https://remote.example"
+
+        def is_available(self) -> bool:
+            raise AssertionError("Remote endpoint must not be contacted")
+
+    report = ProjectHealthCheckAgent(RemoteLLM(), root).run(run_quality_gates=False)
+
+    assert "PRIVACY BLOCK" in report
+    assert "Repository contents were not sent" in report
 
 
 def test_health_check_quality_gates_are_fixed_and_never_autofix(tmp_path, monkeypatch):
