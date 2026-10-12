@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 from jarvis.project_guardian import GUARDIAN_RULES
 
 _SECRET_RE = re.compile(
-    r"(?im)(\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION|PRIVATE[_-]?KEY|CREDENTIAL)[A-Z0-9_]*\s*[=:]\s*)[^\r\n]*"
+    r"""(?im)(["']?\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION|PRIVATE[_-]?KEY|CREDENTIAL)[A-Z0-9_]*["']?\s*[=:]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^,\r\n}]+)"""
 )
 _TOKEN_RE = re.compile(r"(?i)\b(?:ghp_|github_pat_|sk-)[A-Za-z0-9_-]{16,}\b|\bBearer\s+\S+")
 _TEXT_SUFFIXES = {
