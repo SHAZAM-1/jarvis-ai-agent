@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -79,7 +80,7 @@ class ProjectGuardian:
         self.db_path = Path(db_path)
         self.minimum_score = minimum_score
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as db:
+        with self._database() as db:
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS project_guardian_events (
@@ -101,6 +102,15 @@ class ProjectGuardian:
         db.row_factory = sqlite3.Row
         return db
 
+    @contextmanager
+    def _database(self):
+        db = self._connect()
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
     @staticmethod
     def _redact(text: str) -> str:
         text = _SECRET_RE.sub(r'\1"[REDACTED]"', text)
@@ -108,7 +118,7 @@ class ProjectGuardian:
 
     def context_summary(self, limit: int = 8) -> str:
         """Return durable, bounded decisions and lessons for Jarvis and health-check prompts."""
-        with self._connect() as db:
+        with self._database() as db:
             rows = db.execute(
                 "SELECT created_at, stage, summary, score, verdict, reason, lesson "
                 "FROM project_guardian_events ORDER BY id DESC LIMIT ?",
@@ -140,7 +150,7 @@ class ProjectGuardian:
         reason = self._redact(" ".join(reason.split()))[:800]
         lesson = self._redact(" ".join(lesson.split()))[:500]
         safe_risks = tuple(self._redact(" ".join(item.split()))[:300] for item in risks[:8])
-        with self._connect() as db:
+        with self._database() as db:
             cursor = db.execute(
                 "INSERT INTO project_guardian_events "
                 "(created_at, stage, summary, score, verdict, reason, risks, lesson) "
@@ -161,9 +171,16 @@ class ProjectGuardian:
         if any(marker in patch for marker in ("GIT binary patch", "Subproject commit", "\x00")):
             return False, "Binary, submodule, or NUL patch content is prohibited.", []
         paths = sorted(set(_PATCH_PATH_RE.findall(patch)))
+        header_paths = [
+            path
+            for pair in re.findall(r"(?m)^diff --git a/(.*?) b/(.*?)$", patch)
+            for path in pair
+        ]
+        old_paths = re.findall(r"(?m)^--- a/(.+)$", patch)
+        all_paths = sorted(set(paths + header_paths + old_paths))
         if not paths or len(paths) > MAX_PATCH_FILES:
             return False, "Patch has missing paths or exceeds the file limit.", paths
-        for path in paths:
+        for path in all_paths:
             normalized = path.replace("\\", "/")
             pure = PurePosixPath(normalized)
             if pure.is_absolute() or ".." in pure.parts or normalized in PROTECTED_PATHS:
@@ -173,6 +190,8 @@ class ProjectGuardian:
                 or normalized in _ALLOWED_ROOT_FILES
             ):
                 return False, f"Out-of-scope path blocked: {normalized}", paths
+        if any(path not in all_paths for path in paths):
+            return False, "Patch path inventory is inconsistent.", paths
         if re.search(r"(?m)^deleted file mode |^rename (from|to) |^new file mode 120000", patch):
             return False, "Deletion, rename, or symlink patch blocked.", paths
         for pattern in FORBIDDEN_ADDITIONS:
