@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Any
 
 _SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?im)(\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)[A-Z0-9_]*\s*[=:]\s*)"
-    r"(['\"])[^'\"]+\2"
+    r"(?im)(\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)[A-Z0-9_]*\s*[=:]\s*)[^\r\n]*"
 )
 _SECRET_VALUE_RE = re.compile(
     r"(?i)\b(?:ghp_|github_pat_|sk-)[A-Za-z0-9_-]{16,}\b|\bBearer\s+\S+"
@@ -106,7 +105,7 @@ class ProjectHealthCheckAgent:
 
     def _file_context(self) -> tuple[str, int, int, list[str]]:
         """Read tracked text files safely; include inventory even if content is omitted."""
-        listing = self._git("ls-files", "-z")
+        listing = self._git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
         if listing.startswith("[unavailable:"):
             return listing, 0, 0, []
         paths = sorted(path for path in listing.split("\0") if path)
