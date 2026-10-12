@@ -22,7 +22,7 @@ Autonomous commenting is a narrow first step, not unrestricted self-direction:
 | Private/direct messages | **Disabled** |
 | Following accounts | **Disabled** |
 | Voting / upvoting | **Disabled** |
-| Links in automatic comments or posts | **Blocked**, including URLs, common bare domains, and Markdown links |
+| Links in automatic comments or posts | **Blocked by default**; only exact owner-approved HTTPS URLs are permitted when explicitly configured |
 | Comment frequency | At most one comment per cycle; minimum 10-minute interval |
 | Daily comments | At most **five attempts per UTC day**; failed attempts count |
 | Original public posts | At most **one per rolling 24 hours**, only when genuinely useful and non-repetitive |
@@ -37,7 +37,7 @@ These checks reduce risk but cannot guarantee that every model-generated comment
 
 ## What “learning” and “self-development” mean
 
-Jarvis does not train or change model weights. Learning notes are stored context, not guaranteed facts. Optional self-development can propose one small project-scoped patch, apply it on an isolated GitHub branch, run fixed local checks, request a second model review, open a PR, wait for GitHub CI, and merge only if CI is green and GitHub permits the merge. It cannot edit protected policy/control-plane files, dependencies, workflows, or configuration; it never runs model-supplied commands. Failed checks leave the PR open and do not merge.
+Jarvis does not train or change model weights. Learning notes are stored context, not guaranteed facts. Optional self-development can propose one small project-scoped patch, apply it on an isolated GitHub branch, run Ruff, compile checks, and the full test suite, request a second-pass review from the configured local model (not an independent reviewer), open a PR, wait for GitHub CI, and merge automatically only when every required gate is green and GitHub permits the merge. It cannot edit protected policy/control-plane files, dependencies, workflows, or configuration; it never runs model-supplied commands. A second-pass review uses the same configured local model and is not truly independent. Failed local checks, review rejection, or failed/missing required CI must prevent merging; a failed CI PR is left open for inspection.
 
 The loop is not yet configured to launch itself at Windows startup. The computer must be on, Ollama and internet access must be available, and Jarvis must be running the relevant command. No live Moltbook request or local Ollama inference is considered verified until tested on the user's machine.
 
@@ -119,7 +119,7 @@ $env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'true'
 jarvis
 ```
 
-Then run `/self-dev` for one attempt or `/self-dev-loop` to let Jarvis choose one bounded improvement per day without a new task prompt. The loop only works from a clean local `main` synced with `origin/main`. It creates a project-scoped branch and PR, runs fixed tests and static diff checks, requests a second model review, waits for GitHub CI, and merges only if checks are green and GitHub permits it. It never force-pushes, resets, cleans, changes protected files, installs dependencies, or runs arbitrary model-supplied commands. This is defense-in-depth, not a mathematical guarantee against every possible bad patch; keep backups and review merged PR history. Disable it with `$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'false'`.
+Then run `/self-dev` for one attempt or `/self-dev-loop` to let Jarvis choose one bounded improvement per day without a new task prompt. The loop only works from a clean local `main` synced with `origin/main`. It creates a project-scoped branch and PR, runs fixed scope/diff checks, Ruff, compile checks, and the full test suite, requests a second-pass review from the configured local model (not a separate independent reviewer), waits for GitHub CI, and merges automatically only if all required checks are green and GitHub permits it. This lets bounded maintenance proceed while the owner is away; it is not permission for unrestricted changes. It never force-pushes, resets, cleans, changes protected files, installs dependencies, or runs arbitrary model-supplied commands. This is defense-in-depth, not a mathematical guarantee against every possible bad patch; keep backups and review merged PR history. Disable it with `$env:JARVIS_AUTONOMOUS_DEVELOPMENT = 'false'`.
 
 ## Configuration
 
@@ -139,7 +139,7 @@ python -m pytest
 3. Moltbook observation and bounded autonomous commenting with durable deduplication and opt-in.
 4. Verify local model latency, RAM/CPU use, and real API behavior on the target computer.
 5. Add a bounded planner/research/critic pipeline with evidence tracking and task history.
-6. Add a safe self-maintenance workflow: propose patches, work on isolated branches, run allowlisted tests, and require human approval before merge or deployment.
+6. Safe self-maintenance: propose one small patch per 24 hours, restrict changes to allowlisted code/tests/docs, run fixed quality and test gates, request a second-pass model review, open a PR, and auto-merge only after green required CI and GitHub policy checks. Protected policy/configuration/dependency/workflow files remain off-limits; failed checks must never merge.
 7. Add Windows startup/task scheduling only after local verification and explicit user opt-in.
 
 No phase is considered complete until tests and practical checks are verified. Trust and reputation cannot be guaranteed by automation; the goal is a small number of honest, relevant contributions rather than engagement manipulation.
