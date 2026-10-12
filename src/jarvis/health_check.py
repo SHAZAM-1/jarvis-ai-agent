@@ -79,7 +79,8 @@ class ProjectHealthCheckAgent:
         check = self._run(["git", *args], timeout=timeout)
         if not check.ok:
             return f"[unavailable: {check.name}; {check.summary[:180]}]"
-        return check.summary.split("output:\n", 1)[-1]
+        output = check.summary.split("output:\n", 1)[-1]
+        return "" if output == "(no output)" else output
 
     def _environment(self) -> str:
         executables = {
