@@ -323,6 +323,7 @@ class ProjectHealthCheckAgent:
             "documentation drift, and dependency/environment assumptions. Distinguish confirmed "
             "evidence from hypotheses. Return a concise analysis with findings, evidence, impact, "
             "and suggested verification. Never output commands for automatic execution."
+            + ("\\n\\n" + self.mesh.context_for("health-check", limit=10) if self.mesh else "")
         )
         file_findings: list[str] = []
         failed_batches: list[str] = []
