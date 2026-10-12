@@ -28,7 +28,7 @@ _FILE_CHUNK_CHARS = 4_000
 _BATCH_CHARS = 12_000
 _MAX_FILE_CHARS = 200_000
 _MAX_TOTAL_SOURCE_CHARS = 500_000
-_MAX_BRANCH_DIFFS = 100
+_MAX_BRANCH_DIFFS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,7 +247,7 @@ class ProjectHealthCheckAgent:
 
         results: list[str] = []
         for ref in refs:
-            stat = self._git("diff", "--shortstat", f"origin/main...{ref}")
+            stat = self._git("diff", "--shortstat", f"origin/main...{ref}", timeout=10)
             results.append(f"{ref}: {stat or '(same tree as origin/main or no diff)'}")
         if omitted_count:
             results.append(f"[{omitted_count} additional refs omitted from individual diff checks]")
@@ -264,7 +264,7 @@ class ProjectHealthCheckAgent:
             "--format=%(refname:short) | %(objectname:short) | %(upstream:short) | %(subject)",
             "refs/heads",
             "refs/remotes",
-            max_output_chars=25_000,
+            max_output_chars=100_000,
         )
         history = self._git("log", "--all", "--oneline", "--decorate", "-30")
         branch_analysis = self._branch_analysis(branches)
