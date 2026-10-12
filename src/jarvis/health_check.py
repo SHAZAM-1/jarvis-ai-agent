@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 _SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?im)(\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)[A-Z0-9_]*\s*[=:]\s*)[^\r\n]*"
+    r"(?im)(\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION|PRIVATE[_-]?KEY|CREDENTIAL|APP[_-]?KEY)[A-Z0-9_]*\s*[=:]\s*)[^\r\n]*"
 )
 _SECRET_VALUE_RE = re.compile(
     r"(?i)\b(?:ghp_|github_pat_|sk-)[A-Za-z0-9_-]{16,}\b|\bBearer\s+\S+"
