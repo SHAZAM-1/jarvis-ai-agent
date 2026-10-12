@@ -155,8 +155,9 @@ class ProjectHealthCheckAgent:
         included = 0
 
         for relative in paths:
-            candidate = self.root / relative
-            if any(part in _SKIP_PARTS for part in candidate.parts):
+            relative_path = Path(relative)
+            candidate = self.root / relative_path
+            if any(part in _SKIP_PARTS for part in relative_path.parts):
                 continue
             inventory.append(relative)
             name = candidate.name.lower()
