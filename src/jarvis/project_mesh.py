@@ -35,7 +35,7 @@ MAX_REFS = 100
 MAX_FILES_PER_REF = 800
 MAX_FILE_BYTES = 80_000
 MAX_TOTAL_CHARS = 180_000
-MAX_TASKS = 160
+MAX_TASKS = 80
 MAX_CONTEXT_EVENTS = 12
 
 
@@ -198,11 +198,11 @@ class ProjectMesh:
 class ProjectCrawler:
     """Concurrent specialist crawlers over the working tree and every visible Git ref."""
 
-    def __init__(self, llm: Any, repo_root: str | Path, mesh: ProjectMesh, *, workers: int = 4) -> None:
+    def __init__(self, llm: Any, repo_root: str | Path, mesh: ProjectMesh, *, workers: int = 2) -> None:
         self.llm = llm
         self.root = Path(repo_root).resolve()
         self.mesh = mesh
-        self.workers = max(1, min(int(workers), 6))
+        self.workers = max(1, min(int(workers), 4))
 
     def _local_endpoint_allowed(self) -> bool:
         base_url = getattr(self.llm, "base_url", None)
