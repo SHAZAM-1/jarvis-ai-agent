@@ -47,6 +47,7 @@ class MeshEvent:
     kind: str
     topic: str
     content: str
+    status: str = "open"
 
 
 @dataclass(frozen=True, slots=True)
