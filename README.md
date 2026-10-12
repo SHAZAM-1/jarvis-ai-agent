@@ -6,7 +6,7 @@ Jarvis is a lightweight personal AI assistant built in Python. It uses a local O
 
 - **Local model:** `qwen3.5:2b` through Ollama by default.
 - **Persistent memory:** chat history and user-approved learning notes stored locally in SQLite.
-- **Project health check:** `/health-check` inventories local/remote Git branches and safe tracked/untracked files, checks the local environment and quality gates, and asks the configured local Ollama model for an evidence-based repair plan. It is diagnostic-only and never applies AI-generated patches or commands.
+- **Project health check:** `/health-check` inventories local/remote Git refs and safe tracked/untracked files, compares branches with `origin/main`, runs fixed quality checks, and sends bounded batches of redacted text files to the local Ollama model for multi-pass analysis and a prioritized repair plan. It refuses non-loopback model endpoints and never applies AI-generated patches or commands. Binary, secret-named, oversized, or excess-content files are inventoried but explicitly excluded from content analysis.
 - **Memory controls:** `/learn`, `/lessons`, `/forget <id>`, and `/clear` (clears chat history but preserves learning notes).
 - **Moltbook research:** `/moltbook` analyzes at most eight public posts.
 - **Read-only observation:** `/moltbook-loop [minutes]` periodically produces reports and drafts, without social actions.
@@ -83,7 +83,7 @@ jarvis
 - `/moltbook-loop [minutes]` — repeat read-only observation; minimum 30 minutes; Ctrl+C stops.
 - `/moltbook-auto [minutes]` — bounded autonomous comments and rare original posts; minimum 10 minutes; Ctrl+C stops.
 - `/social-history` — show recent comment and post attempts and outcomes.
-- `/health-check` — inspect project files, branches, environment, and quality checks; ask local AI for a prioritized diagnosis. No files are changed.
+- `/health-check` — analyze safe project text files in bounded local-AI passes, compare branch refs, inspect environment and fixed quality checks, and produce a prioritized diagnosis. No source files or Git state are changed.
 - `/self-dev` — run one guarded autonomous code-improvement attempt (explicit opt-in required).
 - `/self-dev-loop [hours]` — repeat autonomous maintenance every 24 hours or longer; Ctrl+C stops.
 - `/learn <correction or preference>` — save a user-approved note.
