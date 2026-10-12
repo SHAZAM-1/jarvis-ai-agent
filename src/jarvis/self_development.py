@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
+from jarvis.project_mesh import ProjectMesh
 from jarvis.owner_policy import (
     FORBIDDEN_ADDITIONS,
     MAX_PATCH_BYTES,
@@ -177,6 +178,7 @@ class SelfDevelopmentManager:
         self.root = Path(repo_root).resolve()
         self.state = SelfDevelopmentState(db_path)
         self.guardian = ProjectGuardian(llm, db_path)
+        self.mesh = ProjectMesh(db_path)
 
     def _run(
         self,
@@ -269,6 +271,7 @@ class SelfDevelopmentManager:
         chunks.append(
             "--- PROJECT GUARDIAN RULES AND DURABLE REVIEW HISTORY ---\n"
             + self.guardian.context_summary()
+            + "\\n\\nSHARED AGENT MESH:\\n" + self.mesh.context_for("self-dev", limit=10)
         )
         return "\n\n".join(chunks)
 
