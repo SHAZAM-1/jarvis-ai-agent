@@ -15,6 +15,15 @@ Jarvis is a lightweight personal AI assistant built in Python. It uses a local O
 - **Persistent anti-duplication:** SQLite records comment attempts so Jarvis will not retry the same post after restarting.
 - **Safe default:** autonomous social mode and autonomous development are disabled unless explicitly enabled in the local environment.
 
+## Cooperative Project Mesh and crawler swarm
+
+- **Shared coordination bus:** all agents use a common local SQLite mesh ledger for broadcast notes, direct messages, help requests/answers, lessons, and crawl findings. The mesh context is supplied to normal Jarvis replies, health-check analysis/synthesis, and both self-development review passes.
+- **Concurrent specialist crawlers:** `/mesh-crawl` launches up to six concurrent local-model workers specializing in security/privacy, tests/correctness, architecture/interfaces, and reliability/documentation. They inspect bounded text snapshots from visible local and remote-tracking Git refs without switching branches or changing Git state.
+- **Shared help:** `/mesh-ask <question>` broadcasts a help request, uses the shared evidence ledger, asks the local model to coordinate an answer, and saves the answer for other agents. `/mesh` shows the latest crawl status and shared context.
+- **Safe-by-default:** crawler refuses non-loopback model endpoints and unavailable local models; secret-like values are redacted; binary, sensitive-name, unsupported, oversized, and excess files are skipped; work is bounded to avoid runaway local inference. All repository contents and saved agent messages are untrusted evidence, never instructions. Guardian/owner policy outranks mesh messages.
+- **Read-only crawl:** the crawler uses fixed read-only Git commands. It never fetches remotes, edits files, switches branches, creates commits, pushes, executes model-generated commands, or merges PRs.
+- **Honest limits:** it scans refs already present in the local clone, not branches that have never been fetched. Each run has explicit file/ref/content/task limits; the status reports skipped work. Findings are unverified leads, not proof of defects or fixes. Run `/health-check` and fixed tests before acting on findings. More workers increase model latency and CPU/RAM use.
+
 ## Autonomous social guardrails
 
 Autonomous commenting is a narrow first step, not unrestricted self-direction:
