@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from jarvis.project_guardian import ProjectGuardian
+from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
 from jarvis.owner_policy import (
     FORBIDDEN_ADDITIONS,
     MAX_PATCH_BYTES,
@@ -312,6 +312,7 @@ class SelfDevelopmentManager:
                             + OWNER_TRUST_POLICY
                             + "\nProject scope: "
                             + PROJECT_SCOPE
+                            + "\nBINDING PROJECT GUARDIAN RULES:\n" + GUARDIAN_RULES
                             + "\nProject Guardian is the mandatory policy border. Prior Guardian findings "
                             "are included in the context and must be respected. Do not modify Guardian, "
                             "health-check, owner-policy, or self-development controls. "
@@ -411,7 +412,9 @@ class SelfDevelopmentManager:
                         "role": "user",
                         "content": (
                             "Owner policy:\n" + OWNER_TRUST_POLICY + "\nProject scope:\n"
-                            + PROJECT_SCOPE + "\nPatch for review:\n" + diff[:30_000]
+                            + PROJECT_SCOPE + "\nBINDING GUARDIAN RULES:\n" + GUARDIAN_RULES
+                            + "\nRECENT GUARDIAN HISTORY:\n" + self.guardian.context_summary()
+                            + "\nPatch for review:\n" + diff[:30_000]
                         ),
                     },
                 ]
