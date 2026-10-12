@@ -62,6 +62,9 @@ def _print_help() -> None:
         "  /status                     Show local health and safety settings\n"
         "  /health-check               Analyze project files, all Git branches, environment, and tests with local AI\n"
         "  /guardian                   Show Guardian rules and recent project evaluations\n"
+        "  /mesh                       Show shared agent messages and crawler status\n"
+        "  /mesh-crawl                 Concurrently review visible project files across Git refs\n"
+        "  /mesh-ask <question>        Ask the shared project knowledge mesh for help\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -117,6 +120,27 @@ def main() -> None:
             print("JARVIS PROJECT GUARDIAN — POLICY BORDER")
             print(GUARDIAN_RULES)
             print("\n" + guardian.context_summary())
+            continue
+        if command in {"/mesh", "/mesh-crawl", "/mesh-ask"}:
+            if command == "/mesh":
+                print("JARVIS PROJECT MESH — SHARED KNOWLEDGE BUS")
+                print(crawler.status())
+                print(mesh.context_for("jarvis", limit=12))
+            elif command == "/mesh-crawl":
+                print("Jarvis: Starting bounded, read-only concurrent crawl of visible Git refs and text files.")
+                print("This may use many local model calls. No files, branches, commits, or remotes will be changed.")
+                try:
+                    print(crawler.crawl().summary)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    print(f"Jarvis mesh crawl stopped safely: {type(exc).__name__}: {exc}")
+            else:
+                if not argument.strip():
+                    print("Jarvis: Usage: /mesh-ask <question>")
+                else:
+                    try:
+                        print(crawler.help_for("jarvis", argument.strip()))
+                    except (RuntimeError, ValueError, OSError) as exc:
+                        print(f"Jarvis mesh help unavailable: {type(exc).__name__}: {exc}")
             continue
         if command == "/health-check":
             health_agent = ProjectHealthCheckAgent(
