@@ -70,6 +70,25 @@ def test_health_check_inventories_files_and_contacts_local_model(tmp_path):
     assert _git(root, "status", "--porcelain") == ""
 
 
+def test_health_check_analyzes_large_text_files_in_multiple_segments(tmp_path):
+    root = _repo(tmp_path)
+    large = root / "large_module.py"
+    large.write_text("# beginning\n" + "value = 1\n" * 900 + "# FULL_FILE_END_MARKER\n", encoding="utf-8")
+    _git(root, "add", "large_module.py")
+    _git(root, "commit", "-m", "add large test module")
+
+    llm = FakeLLM()
+    report = ProjectHealthCheckAgent(llm, root).run(run_quality_gates=False)
+    prompts = "\n".join(
+        message["content"]
+        for call in llm.calls
+        for message in call
+    )
+
+    assert "FULL_FILE_END_MARKER" in prompts
+    assert "file-analysis batches completed" in report
+
+
 def test_health_check_skips_model_when_local_ollama_is_unavailable(tmp_path):
     root = _repo(tmp_path)
     llm = FakeLLM(available=False)
