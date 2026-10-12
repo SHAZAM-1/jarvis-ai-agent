@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from jarvis.health_check import ProjectHealthCheckAgent
+from jarvis.project_guardian import ProjectGuardian
 
 
 class FakeLLM:
@@ -147,3 +148,16 @@ def test_redaction_handles_bearer_and_assignment_secrets():
     assert "private-key-secret" not in redacted
     assert "abcdefghijklmnopqrstuvwxyz123" not in redacted
     assert "[REDACTED]" in redacted
+
+
+def test_health_check_is_rated_and_saved_in_guardian_ledger(tmp_path):
+    root = _repo(tmp_path)
+    llm = FakeLLM()
+    guardian = ProjectGuardian(llm, tmp_path / "guardian.sqlite3")
+    agent = ProjectHealthCheckAgent(llm, root, guardian=guardian)
+
+    report = agent.run(run_quality_gates=False)
+
+    assert "PROJECT GUARDIAN VERDICT" in report
+    assert "Ledger event:" in report
+    assert "health_report" in guardian.context_summary()

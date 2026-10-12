@@ -30,6 +30,7 @@ from jarvis.moltbook_loop import (
 from jarvis.social_state import SocialState
 from jarvis.self_development import SelfDevelopmentManager
 from jarvis.health_check import ProjectHealthCheckAgent
+from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
 
 
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
@@ -59,6 +60,7 @@ def _print_help() -> None:
         "Commands:\n"
         "  /status                     Show local health and safety settings\n"
         "  /health-check               Analyze project files, all Git branches, environment, and tests with local AI\n"
+        "  /guardian                   Show Guardian rules and recent project evaluations\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -80,7 +82,8 @@ def main() -> None:
     llm = OllamaClient(settings.ollama_url, settings.model, settings.request_timeout)
     memory = MemoryStore(settings.db_path)
     social_state = SocialState(settings.db_path)
-    agent = JarvisAgent(llm, memory)
+    guardian = ProjectGuardian(llm, settings.db_path)
+    agent = JarvisAgent(llm, memory, guardian=guardian)
 
     print("Jarvis AI Agent — local mode")
     print(f"Model: {settings.model}")
@@ -107,11 +110,17 @@ def main() -> None:
         if command == "/help":
             _print_help()
             continue
+        if command == "/guardian":
+            print("JARVIS PROJECT GUARDIAN — POLICY BORDER")
+            print(GUARDIAN_RULES)
+            print("\n" + guardian.context_summary())
+            continue
         if command == "/health-check":
             health_agent = ProjectHealthCheckAgent(
                 llm,
                 Path(__file__).resolve().parents[2],
                 model_name=settings.model,
+                guardian=guardian,
             )
             print("Jarvis: Starting read-only project health analysis. This may take a few minutes.")
             print(health_agent.run())

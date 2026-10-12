@@ -16,6 +16,8 @@ def test_owner_policy_keeps_creator_trust_and_project_scope_explicit():
     assert "owner" in OWNER_TRUST_POLICY.lower()
     assert "Jarvis AI Agent" in PROJECT_SCOPE
     assert "src/jarvis/self_development.py" in PROTECTED_PATHS
+    assert "src/jarvis/project_guardian.py" in PROTECTED_PATHS
+    assert "src/jarvis/health_check.py" in PROTECTED_PATHS
 
 
 def test_allowed_paths_include_project_code_tests_and_docs_only():
@@ -25,6 +27,8 @@ def test_allowed_paths_include_project_code_tests_and_docs_only():
     assert is_allowed_path("README.md")
     assert not is_allowed_path("src/jarvis/agent.py")
     assert not is_allowed_path("src/jarvis/self_development.py")
+    assert not is_allowed_path("src/jarvis/project_guardian.py")
+    assert not is_allowed_path("src/jarvis/health_check.py")
     assert not is_allowed_path("pyproject.toml")
     assert not is_allowed_path(".github/workflows/tests.yml")
     assert not is_allowed_path("../outside.py")
