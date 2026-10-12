@@ -36,9 +36,11 @@ def test_mesh_broadcast_and_direct_messages_are_shared(tmp_path):
 def test_mesh_redacts_secrets_before_persistence(tmp_path):
     mesh = ProjectMesh(tmp_path / "mesh.sqlite3")
     mesh.publish("agent", "config", "API_KEY=secret-value-123")
+    mesh.publish("agent", "json-config", '{"ACCESS_TOKEN": "secret-json-value", "safe": true}')
     context = mesh.context_for("agent")
 
     assert "secret-value-123" not in context
+    assert "secret-json-value" not in context
     assert "[REDACTED]" in context
 
 
