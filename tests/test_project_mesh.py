@@ -108,3 +108,21 @@ def test_specialist_uses_crawler_output_schema_and_shares_findings(tmp_path):
     assert result[4] == 1
     assert "required output schema" in llm.messages[0][0]["content"]
     assert "Missing input validation" in mesh.context_for("health-check")
+
+
+def test_crawler_reads_safe_worktree_files_and_excludes_sensitive_paths(tmp_path):
+    source = tmp_path / "src" / "example.py"
+    source.parent.mkdir()
+    source.write_text('API_KEY = "secret-worktree-value"\\nvalue = 1\\n', encoding="utf-8")
+    private = tmp_path / "secrets" / "settings.py"
+    private.parent.mkdir()
+    private.write_text("private = True\\n", encoding="utf-8")
+
+    crawler = ProjectCrawler(FakeLLM(), tmp_path, ProjectMesh(tmp_path / "mesh.sqlite3"))
+
+    content = crawler._read_ref_file("WORKTREE", "src/example.py")
+    assert content is not None
+    assert "secret-worktree-value" not in content
+    assert "[REDACTED]" in content
+    assert crawler._read_ref_file("WORKTREE", "secrets/settings.py") is None
+    assert crawler._read_ref_file("WORKTREE", "../outside.py") is None
