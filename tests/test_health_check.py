@@ -135,8 +135,15 @@ def test_health_check_quality_gates_are_fixed_and_never_autofix(tmp_path, monkey
 
 
 def test_redaction_handles_bearer_and_assignment_secrets():
-    text = 'MOLTBOOK_API_KEY = "private-token-value"\nAuthorization: Bearer abcdefghijklmnopqrstuvwxyz123'
+    text = (
+        'MOLTBOOK_API_KEY = "private-token-value"\n'
+        "AWS_ACCESS_KEY_ID=unquoted-access-secret\n"
+        'PRIVATE_KEY = "private-key-secret"\n'
+        "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123"
+    )
     redacted = ProjectHealthCheckAgent._redact(text)
     assert "private-token-value" not in redacted
+    assert "unquoted-access-secret" not in redacted
+    assert "private-key-secret" not in redacted
     assert "abcdefghijklmnopqrstuvwxyz123" not in redacted
     assert "[REDACTED]" in redacted
