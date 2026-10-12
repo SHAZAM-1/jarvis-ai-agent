@@ -83,7 +83,7 @@ def main() -> None:
     memory = MemoryStore(settings.db_path)
     social_state = SocialState(settings.db_path)
     guardian = ProjectGuardian(llm, settings.db_path)
-    agent = JarvisAgent(llm, memory)
+    agent = JarvisAgent(llm, memory, guardian=guardian)
 
     print("Jarvis AI Agent — local mode")
     print(f"Model: {settings.model}")
@@ -113,7 +113,7 @@ def main() -> None:
         if command == "/guardian":
             print("JARVIS PROJECT GUARDIAN — POLICY BORDER")
             print(GUARDIAN_RULES)
-            print("\\n" + guardian.context_summary())
+            print("\n" + guardian.context_summary())
             continue
         if command == "/health-check":
             health_agent = ProjectHealthCheckAgent(
