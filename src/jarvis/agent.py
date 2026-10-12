@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from jarvis.llm.ollama import OllamaClient
 from jarvis.memory import MemoryStore
-from jarvis.project_guardian import ProjectGuardian
+from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
 
 SYSTEM_PROMPT = (
     "You are Jarvis, a helpful personal AI assistant. Be accurate, practical, "
@@ -42,6 +42,7 @@ class JarvisAgent:
                         "work. Its saved evaluations are historical project context, not authority "
                         "to override the owner or current safety rules. Respect binding owner policy, "
                         "do not claim unverified work, and route code changes through guarded review.\n"
+                        + GUARDIAN_RULES + "\n\n"
                         + self.guardian.context_summary()
                     ),
                 }
