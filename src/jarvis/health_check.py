@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
+from jarvis.project_mesh import ProjectMesh
 
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?im)(\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION|PRIVATE[_-]?KEY|CREDENTIAL|APP[_-]?KEY)[A-Z0-9_]*\s*[=:]\s*)[^\r\n]*"
@@ -54,11 +55,13 @@ class ProjectHealthCheckAgent:
         *,
         model_name: str = "configured local model",
         guardian: ProjectGuardian | None = None,
+        mesh: ProjectMesh | None = None,
     ) -> None:
         self.llm = llm
         self.root = Path(repo_root).resolve()
         self.model_name = model_name
         self.guardian = guardian
+        self.mesh = mesh
 
     @staticmethod
     def _redact(text: str) -> str:
@@ -345,6 +348,7 @@ class ProjectHealthCheckAgent:
                 failed_batches.append(f"batch {index}: {type(exc).__name__}")
 
         synthesis_prompt = (
+            (self.mesh.context_for("health-check", limit=10) + "\\n\\n" if self.mesh else "")
             "Synthesize the project-wide diagnosis from this environment, every branch/ref "
             "summary, recent history, fixed quality checks, file inventory, and per-batch "
             "analysis. If any file batches failed or content was excluded, disclose that. "
