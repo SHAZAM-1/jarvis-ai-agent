@@ -53,7 +53,9 @@ class ProjectHealthCheckAgent:
         text = _SECRET_ASSIGNMENT_RE.sub(r'\1"[REDACTED]"', text)
         return _SECRET_VALUE_RE.sub("[REDACTED]", text)
 
-    def _run(self, args: list[str], timeout: int = 30) -> CommandCheck:
+    def _run(
+        self, args: list[str], timeout: int = 30, max_output_chars: int = 5_000
+    ) -> CommandCheck:
         """Run a fixed diagnostic command without a shell and return bounded output."""
         try:
             result = subprocess.run(
@@ -68,15 +70,21 @@ class ProjectHealthCheckAgent:
         except (OSError, subprocess.TimeoutExpired) as exc:
             return CommandCheck(" ".join(args), False, f"Could not run ({type(exc).__name__}).")
         output = self._redact((result.stdout + "\n" + result.stderr).strip())
-        output = output[-5_000:] if output else "(no output)"
+        if len(output) > max_output_chars:
+            output = output[:max_output_chars] + "\n[OUTPUT TRUNCATED]"
+        output = output or "(no output)"
         return CommandCheck(
             " ".join(args),
             result.returncode == 0,
             f"exit={result.returncode}; output:\n{output}",
         )
 
-    def _git(self, *args: str, timeout: int = 30) -> str:
-        check = self._run(["git", *args], timeout=timeout)
+    def _git(
+        self, *args: str, timeout: int = 30, max_output_chars: int = 5_000
+    ) -> str:
+        check = self._run(
+            ["git", *args], timeout=timeout, max_output_chars=max_output_chars
+        )
         if not check.ok:
             return f"[unavailable: {check.name}; {check.summary[:180]}]"
         output = check.summary.split("output:\n", 1)[-1]
@@ -106,7 +114,10 @@ class ProjectHealthCheckAgent:
 
     def _file_context(self) -> tuple[str, int, int, list[str]]:
         """Read tracked text files safely; include inventory even if content is omitted."""
-        listing = self._git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
+        listing = self._git(
+            "ls-files", "--cached", "--others", "--exclude-standard", "-z",
+            max_output_chars=250_000,
+        )
         if listing.startswith("[unavailable:"):
             return listing, 0, 0, []
         paths = sorted(path for path in listing.split("\0") if path)
@@ -180,6 +191,7 @@ class ProjectHealthCheckAgent:
             "--format=%(refname:short) | %(objectname:short) | %(upstream:short) | %(subject)",
             "refs/heads",
             "refs/remotes",
+            max_output_chars=25_000,
         )
         history = self._git("log", "--all", "--oneline", "--decorate", "-30")
         current_diff = self._git("diff", "--stat", "origin/main...HEAD")
