@@ -350,7 +350,7 @@ class ProjectHealthCheckAgent:
 
         synthesis_prompt = (
             (self.mesh.context_for("health-check", limit=10) + "\\n\\n" if self.mesh else "")
-            "Synthesize the project-wide diagnosis from this environment, every branch/ref "
+            + "Synthesize the project-wide diagnosis from this environment, every branch/ref "
             "summary, recent history, fixed quality checks, file inventory, and per-batch "
             "analysis. If any file batches failed or content was excluded, disclose that. "
             "Do not assume omitted content is correct. Prioritize P0/P1/P2. For each important "
