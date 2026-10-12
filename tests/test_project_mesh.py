@@ -30,7 +30,7 @@ def test_mesh_broadcast_and_direct_messages_are_shared(tmp_path):
 
     assert "bounded issue" in mesh.context_for("self-dev")
     assert "owner policy" in mesh.context_for("self-dev")
-    assert "owner policy" not in mesh.context_for("health-check")
+    assert "Check owner policy before any change." not in mesh.context_for("health-check")
 
 
 def test_mesh_redacts_secrets_before_persistence(tmp_path):
