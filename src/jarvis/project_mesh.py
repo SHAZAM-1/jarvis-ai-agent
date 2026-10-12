@@ -34,6 +34,7 @@ MAX_REFS = 100
 MAX_FILES_PER_REF = 800
 MAX_FILE_BYTES = 80_000
 MAX_TOTAL_CHARS = 180_000
+MAX_TASKS = 160
 MAX_CONTEXT_EVENTS = 12
 
 
@@ -280,6 +281,9 @@ class ProjectCrawler:
         total_chars = 0
         for ref in refs:
             for path in self._paths_for_ref(ref):
+                if len(tasks) >= MAX_TASKS:
+                    skipped += 1
+                    break
                 content = self._read_ref_file(ref, path)
                 if content is None:
                     skipped += 1
