@@ -310,11 +310,19 @@ class ProjectGuardian:
     def record_outcome(self, stage: str, summary: str, outcome: str, evidence: str = "") -> GuardianDecision:
         """Persist objective outcomes (e.g. tests/CI pass or fail) for future AI context."""
         normalized = outcome.lower().strip()
-        passed = normalized in {"passed", "success", "green", "merged"}
+        if normalized in {"no_change", "skipped", "not_applicable"}:
+            score, verdict = 50, "neutral"
+            risks: tuple[str, ...] = ()
+            reason = f"No change was made: {outcome}. {evidence}"[:800]
+        elif normalized in {"passed", "success", "green", "merged"}:
+            score, verdict = 100, "approve"
+            risks = ()
+            reason = f"Observed engineering outcome: {outcome}. {evidence}"[:800]
+        else:
+            score, verdict = 0, "reject"
+            risks = ("Keep the failed outcome visible in future project context.",)
+            reason = f"Observed engineering outcome: {outcome}. {evidence}"[:800]
         return self._record(
-            stage, summary, 100 if passed else 0,
-            "approve" if passed else "reject",
-            f"Observed engineering outcome: {outcome}. {evidence}"[:800],
-            () if passed else ("Keep the failed outcome visible in future project context.",),
+            stage, summary, score, verdict, reason, risks,
             f"Latest recorded outcome for {summary[:100]}: {outcome}.",
         )
