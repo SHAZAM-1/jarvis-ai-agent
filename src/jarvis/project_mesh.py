@@ -227,7 +227,13 @@ class ProjectCrawler:
         return unique[:MAX_REFS]
 
     def _paths_for_ref(self, ref: str) -> list[str]:
-        output = self._git("ls-tree", "-r", "--name-only", "-z", ref, timeout=45)
+        if ref == "WORKTREE":
+            output = self._git(
+                "ls-files", "--cached", "--others", "--exclude-standard", "-z",
+                timeout=45,
+            )
+        else:
+            output = self._git("ls-tree", "-r", "--name-only", "-z", ref, timeout=45)
         return [p for p in output.split("\0") if p][:MAX_FILES_PER_REF]
 
     def _read_ref_file(self, ref: str, path: str) -> str | None:
@@ -242,13 +248,25 @@ class ProjectCrawler:
             return None
         if p.suffix.lower() not in _TEXT_SUFFIXES and p.name not in {".gitignore", ".env.example"}:
             return None
-        result = subprocess.run(
-            ["git", "show", f"{ref}:{path}"], cwd=self.root, capture_output=True,
-            text=True, timeout=10, check=False, shell=False,
-        )
-        if result.returncode or len(result.stdout.encode("utf-8", errors="ignore")) > MAX_FILE_BYTES:
-            return None
-        return self.mesh.redact(result.stdout)
+        if ref == "WORKTREE":
+            try:
+                resolved = (self.root / p).resolve(strict=True)
+                if not resolved.is_relative_to(self.root) or not resolved.is_file():
+                    return None
+                if resolved.stat().st_size > MAX_FILE_BYTES:
+                    return None
+                content = resolved.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError, RuntimeError):
+                return None
+        else:
+            result = subprocess.run(
+                ["git", "show", f"{ref}:{path}"], cwd=self.root, capture_output=True,
+                text=True, timeout=10, check=False, shell=False,
+            )
+            if result.returncode or len(result.stdout.encode("utf-8", errors="ignore")) > MAX_FILE_BYTES:
+                return None
+            content = result.stdout
+        return self.mesh.redact(content)
 
     def _analyze(self, task: tuple[str, str, str, str]) -> tuple[str, str, str, str, int]:
         ref, path, specialist, content = task
@@ -277,7 +295,7 @@ class ProjectCrawler:
             raise RuntimeError("Project crawler refused to send source to a non-loopback model endpoint.")
         if not self.llm.is_available():
             raise RuntimeError("Local model is unavailable; no project contents were sent.")
-        refs = self._refs()
+        refs = ["WORKTREE", *self._refs()]
         if not refs:
             raise RuntimeError("No Git refs found; run from a valid Git repository.")
         roles = (
