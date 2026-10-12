@@ -381,10 +381,10 @@ class SelfDevelopmentManager:
             try:
                 review = json.loads(review_raw)
             except (TypeError, json.JSONDecodeError) as exc:
-                raise SelfDevelopmentError("Independent review response was invalid.") from exc
+                raise SelfDevelopmentError("Second-pass review response was invalid.") from exc
             if not isinstance(review, dict) or review.get("approve") is not True:
                 reason = str(review.get("reason", "review rejected"))[:180] if isinstance(review, dict) else "review rejected"
-                raise SelfDevelopmentError(f"Independent review rejected the patch: {reason}")
+                raise SelfDevelopmentError(f"Second-pass review rejected the patch: {reason}")
 
             self._require(["git", "add", "--", *changed])
             self._require(["git", "commit", "-m", "chore: apply guarded Jarvis self-improvement"], timeout=120)
