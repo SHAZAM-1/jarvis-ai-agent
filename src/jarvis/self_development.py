@@ -417,6 +417,7 @@ class SelfDevelopmentManager:
                             "Owner policy:\n" + OWNER_TRUST_POLICY + "\nProject scope:\n"
                             + PROJECT_SCOPE + "\nBINDING GUARDIAN RULES:\n" + GUARDIAN_RULES
                             + "\nRECENT GUARDIAN HISTORY:\n" + self.guardian.context_summary()
+                            + "\nSHARED AGENT MESH:\n" + self.mesh.context_for("self-dev", limit=10)
                             + "\nPatch for review:\n" + diff[:30_000]
                         ),
                     },
