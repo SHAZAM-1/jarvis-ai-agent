@@ -144,3 +144,13 @@ def test_guardian_records_health_report_rating_and_objective_ci_outcome(tmp_path
     assert "github_ci" in context
     assert "Improve helper" in context
     assert "passed" in context
+
+
+def test_guardian_records_no_change_as_neutral_not_failure(tmp_path):
+    guardian = ProjectGuardian(FakeLLM(), tmp_path / "jarvis.sqlite3")
+
+    decision = guardian.record_outcome("self_development", "No useful patch", "no_change")
+
+    assert decision.verdict == "neutral"
+    assert decision.score == 50
+    assert "NEUTRAL" in guardian.context_summary()
