@@ -77,6 +77,21 @@ def test_guardian_blocks_protected_path_without_asking_model(tmp_path):
     assert "REJECT" in guardian.context_summary()
 
 
+def test_guardian_checks_diff_headers_for_path_traversal(tmp_path):
+    llm = FakeLLM(_approved())
+    guardian = ProjectGuardian(llm, tmp_path / "jarvis.sqlite3")
+    malicious = _patch().replace(
+        "diff --git a/src/jarvis/example.py b/src/jarvis/example.py",
+        "diff --git a/../../outside.py b/src/jarvis/example.py",
+    )
+
+    decision = guardian.evaluate_change("Attempt path traversal", malicious)
+
+    assert not decision.approved
+    assert "unsafe path blocked" in decision.reason
+    assert llm.calls == 0
+
+
 def test_guardian_fails_closed_on_invalid_model_response(tmp_path):
     guardian = ProjectGuardian(FakeLLM("not-json"), tmp_path / "jarvis.sqlite3")
 
