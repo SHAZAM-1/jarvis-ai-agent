@@ -29,6 +29,7 @@ from jarvis.moltbook_loop import (
 )
 from jarvis.social_state import SocialState
 from jarvis.self_development import SelfDevelopmentManager
+from jarvis.health_check import ProjectHealthCheckAgent
 
 
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
@@ -57,6 +58,7 @@ def _print_help() -> None:
     print(
         "Commands:\n"
         "  /status                     Show local health and safety settings\n"
+        "  /health-check               Analyze project files, all Git branches, environment, and tests with local AI\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -104,6 +106,15 @@ def main() -> None:
             continue
         if command == "/help":
             _print_help()
+            continue
+        if command == "/health-check":
+            health_agent = ProjectHealthCheckAgent(
+                llm,
+                Path(__file__).resolve().parents[2],
+                model_name=settings.model,
+            )
+            print("Jarvis: Starting read-only project health analysis. This may take a few minutes.")
+            print(health_agent.run())
             continue
         if command == "/clear":
             memory.clear()
@@ -168,7 +179,7 @@ def main() -> None:
             print(
                 f"Jarvis: Guarded self-development loop started every {interval_hours} hours. "
                 "It may open and merge a project-scoped PR only after local tests, "
-                "independent review, and green GitHub CI. Press Ctrl+C to stop."
+                "second-pass local-model review, and green GitHub CI. Press Ctrl+C to stop."
             )
             try:
                 while True:
