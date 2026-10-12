@@ -19,7 +19,7 @@ _SECRET_VALUE_RE = re.compile(
     r"(?i)\b(?:ghp_|github_pat_|sk-)[A-Za-z0-9_-]{16,}\b|\bBearer\s+\S+"
 )
 _TEXT_SUFFIXES = {
-    ".py", ".md", ".toml", ".yml", ".yaml", ".json", ".txt", ".ini", ".cfg", ".example"
+    ".py", ".md", ".rst", ".toml", ".yml", ".yaml", ".json", ".jsonl", ".txt", ".ini", ".cfg", ".conf", ".example", ".lock", ".csv", ".xml", ".html", ".css", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sql", ".ps1", ".bat", ".sh", ".properties"
 }
 _TEXT_NAMES = {".gitignore", ".env.example"}
 _SECRET_NAMES = {".env", ".env.local", "id_rsa"}
