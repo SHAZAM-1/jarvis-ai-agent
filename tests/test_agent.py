@@ -12,6 +12,21 @@ class FakeLLM:
         return "A helpful answer"
 
 
+def test_agent_prompt_supports_darija_and_defaults_to_concise_english(tmp_path):
+    memory = MemoryStore(tmp_path / "memory.sqlite3")
+    llm = FakeLLM()
+    agent = JarvisAgent(llm, memory)
+
+    assert agent.reply("salam, kif dayr?") == "A helpful answer"
+
+    assert llm.messages is not None
+    system_prompt = llm.messages[0]["content"]
+    assert "Moroccan Darija" in system_prompt
+    assert "Arabic script and Latin transliteration (Arabizi)" in system_prompt
+    assert "answer the owner in concise English" in system_prompt
+    assert "Do not expose private internal reasoning" in system_prompt
+
+
 def test_agent_includes_user_approved_lessons_and_saves_reply(tmp_path):
     memory = MemoryStore(tmp_path / "memory.sqlite3")
     memory.add_lesson("The user prefers answers in Moroccan Darija.")
