@@ -76,6 +76,18 @@ def test_crawler_refuses_when_local_model_unavailable(tmp_path):
         crawler.crawl()
 
 
+def test_crawler_refuses_unknown_endpoint_before_contact(tmp_path):
+    class UnknownEndpointLLM:
+        def is_available(self):
+            raise AssertionError("unknown endpoint must not be contacted")
+
+    mesh = ProjectMesh(tmp_path / "mesh.sqlite3")
+    crawler = ProjectCrawler(UnknownEndpointLLM(), tmp_path, mesh)
+
+    with pytest.raises(RuntimeError, match="unknown model endpoint"):
+        crawler.crawl()
+
+
 def test_crawler_context_is_bounded_and_status_is_honest(tmp_path):
     mesh = ProjectMesh(tmp_path / "mesh.sqlite3")
     mesh.publish("crawler", "report", "This is a preliminary finding.", kind="finding")
@@ -113,10 +125,10 @@ def test_specialist_uses_crawler_output_schema_and_shares_findings(tmp_path):
 def test_crawler_reads_safe_worktree_files_and_excludes_sensitive_paths(tmp_path):
     source = tmp_path / "src" / "example.py"
     source.parent.mkdir()
-    source.write_text('API_KEY = "secret-worktree-value"\\nvalue = 1\\n', encoding="utf-8")
+    source.write_text('API_KEY = "secret-worktree-value"\nvalue = 1\n', encoding="utf-8")
     private = tmp_path / "secrets" / "settings.py"
     private.parent.mkdir()
-    private.write_text("private = True\\n", encoding="utf-8")
+    private.write_text("private = True\n", encoding="utf-8")
 
     crawler = ProjectCrawler(FakeLLM(), tmp_path, ProjectMesh(tmp_path / "mesh.sqlite3"))
 
