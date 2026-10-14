@@ -160,13 +160,25 @@ class CacheGuardian:
                     # Recheck freshness immediately before deletion.
                     stats = self._tree_stats(target)
                     cutoff = time.time() - self.min_age_days * 86400
-                    if stats is None or (stats[1] and stats[1] > cutoff):
+                    # Abort if the tree changed after the preview; never clean newly added content.
+                    if (
+                        stats is None
+                        or stats != (candidate.size_bytes, candidate.newest_mtime)
+                        or (stats[1] and stats[1] > cutoff)
+                    ):
                         continue
                     shutil.rmtree(target)
                 elif candidate.kind == "coverage cache":
                     if target.name not in _CACHE_FILE_NAMES and not target.name.startswith(_CACHE_FILE_PREFIXES):
                         continue
-                    if not target.is_file() or target.stat().st_mtime > time.time() - self.min_age_days * 86400:
+                    if not target.is_file():
+                        continue
+                    current_stat = target.stat(follow_symlinks=False)
+                    if (
+                        current_stat.st_size != candidate.size_bytes
+                        or current_stat.st_mtime != candidate.newest_mtime
+                        or current_stat.st_mtime > time.time() - self.min_age_days * 86400
+                    ):
                         continue
                     target.unlink()
                 else:
