@@ -31,6 +31,8 @@ from jarvis.social_state import SocialState
 from jarvis.self_development import SelfDevelopmentManager
 from jarvis.health_check import ProjectHealthCheckAgent
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
+from jarvis.project_mesh import ProjectCrawler, ProjectMesh
+from jarvis.cache_guardian import CacheGuardian
 
 
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
@@ -61,6 +63,9 @@ def _print_help() -> None:
         "  /status                     Show local health and safety settings\n"
         "  /health-check               Analyze project files, all Git branches, environment, and tests with local AI\n"
         "  /guardian                   Show Guardian rules and recent project evaluations\n"
+        "  /mesh                       Show shared agent messages and crawler status\n"
+        "  /mesh-crawl                 Concurrently review visible project files across Git refs\n"
+        "  /mesh-ask <question>        Ask the shared project knowledge mesh for help\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -83,7 +88,11 @@ def main() -> None:
     memory = MemoryStore(settings.db_path)
     social_state = SocialState(settings.db_path)
     guardian = ProjectGuardian(llm, settings.db_path)
-    agent = JarvisAgent(llm, memory, guardian=guardian)
+    mesh = ProjectMesh(settings.db_path)
+    project_root = Path(__file__).resolve().parents[2]
+    crawler = ProjectCrawler(llm, project_root, mesh)
+    cache_guardian = CacheGuardian(project_root)
+    agent = JarvisAgent(llm, memory, guardian=guardian, mesh=mesh)
 
     print("Jarvis AI Agent — local mode")
     print(f"Model: {settings.model}")
@@ -115,12 +124,62 @@ def main() -> None:
             print(GUARDIAN_RULES)
             print("\n" + guardian.context_summary())
             continue
+        if command == "/cleanup":
+            try:
+                report = cache_guardian.scan()
+                print("JARVIS CACHE GUARDIAN — SAFE PROJECT-ONLY CLEANUP")
+                print(f"Scope: {report.root}")
+                print(f"Age rule: only allow-listed cache artifacts untouched for at least {report.min_age_days} days.")
+                print("Protected: Git history, virtual environments, dependencies, databases, memory, logs, credentials, model/Ollama/Docker caches, and files outside this project.")
+                if not report.candidates:
+                    print("No eligible stale cache artifacts found. Nothing was changed.")
+                    continue
+                for item in report.candidates:
+                    print(f"  - {item.path} | {item.kind} | {item.size_bytes} bytes")
+                print(f"Candidates: {report.count}; potential space: {report.total_bytes} bytes.")
+                print("This is a preview only. Type CLEAN to remove only these revalidated cache entries; anything else cancels.")
+                try:
+                    confirmation = input("Confirm cleanup: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    confirmation = ""
+                if confirmation != "CLEAN":
+                    print("Jarvis: Cleanup cancelled. No files were changed.")
+                    continue
+                removed = cache_guardian.clean(report)
+                print(f"Jarvis: Removed {len(removed)} stale cache entries; no project source or persistent data was targeted.")
+                for path in removed:
+                    print(f"  removed: {path}")
+            except (OSError, RuntimeError, ValueError) as exc:
+                print(f"Jarvis: Cache cleanup stopped safely: {type(exc).__name__}: {exc}")
+            continue
+        if command in {"/mesh", "/mesh-crawl", "/mesh-ask"}:
+            if command == "/mesh":
+                print("JARVIS PROJECT MESH — SHARED KNOWLEDGE BUS")
+                print(crawler.status())
+                print(mesh.context_for("jarvis", limit=12))
+            elif command == "/mesh-crawl":
+                print("Jarvis: Starting bounded, read-only concurrent crawl of visible Git refs and text files.")
+                print("This may use many local model calls. No files, branches, commits, or remotes will be changed.")
+                try:
+                    print(crawler.crawl().summary)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    print(f"Jarvis mesh crawl stopped safely: {type(exc).__name__}: {exc}")
+            else:
+                if not argument.strip():
+                    print("Jarvis: Usage: /mesh-ask <question>")
+                else:
+                    try:
+                        print(crawler.help_for("jarvis", argument.strip()))
+                    except (RuntimeError, ValueError, OSError) as exc:
+                        print(f"Jarvis mesh help unavailable: {type(exc).__name__}: {exc}")
+            continue
         if command == "/health-check":
             health_agent = ProjectHealthCheckAgent(
                 llm,
                 Path(__file__).resolve().parents[2],
                 model_name=settings.model,
                 guardian=guardian,
+                mesh=mesh,
             )
             print("Jarvis: Starting read-only project health analysis. This may take a few minutes.")
             print(health_agent.run())

@@ -24,6 +24,7 @@ PROTECTED_PATHS = frozenset(
         "src/jarvis/owner_policy.py",
         "src/jarvis/self_development.py",
         "src/jarvis/project_guardian.py",
+        "src/jarvis/project_mesh.py",
         "src/jarvis/health_check.py",
         "src/jarvis/config.py",
         "src/jarvis/cli.py",
