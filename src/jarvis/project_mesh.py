@@ -169,8 +169,8 @@ class ProjectMesh:
                 severity = str(item.get("severity", "unknown")).lower()
                 if severity not in {"critical", "high", "medium", "low", "info", "unknown"}:
                     severity = "unknown"
-                summary = self.redact(str(item.get("summary", ""))).strip()[:700]
-                evidence = self.redact(str(item.get("evidence", ""))).strip()[:700]
+                summary = self.redact(str(item.get("summary", "" )).strip())[:700]
+                evidence = self.redact(str(item.get("evidence", "" )).strip())[:700]
                 if not summary:
                     continue
                 cur = db.execute(
@@ -205,10 +205,17 @@ class ProjectCrawler:
 
     def _local_endpoint_allowed(self) -> bool:
         base_url = getattr(self.llm, "base_url", None)
-        if base_url is None:
-            return True
+        # Fail closed: without an explicit endpoint we cannot prove that source stays local.
+        if not isinstance(base_url, str) or not base_url.strip():
+            return False
         try:
-            return (urlsplit(str(base_url)).hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
+            parsed = urlsplit(base_url)
+            return (
+                parsed.scheme in {"http", "https"}
+                and (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
+                and parsed.username is None
+                and parsed.password is None
+            )
         except ValueError:
             return False
 
@@ -292,7 +299,7 @@ class ProjectCrawler:
     def crawl(self) -> CrawlResult:
         """Crawl refs concurrently with bounded content and share each result via the mesh."""
         if not self._local_endpoint_allowed():
-            raise RuntimeError("Project crawler refused to send source to a non-loopback model endpoint.")
+            raise RuntimeError("Project crawler refused to send source to a non-loopback or unknown model endpoint.")
         if not self.llm.is_available():
             raise RuntimeError("Local model is unavailable; no project contents were sent.")
         refs = ["WORKTREE", *self._refs()]
@@ -306,9 +313,9 @@ class ProjectCrawler:
         skipped = 0
         deduplicated = 0
         total_chars = 0
+        limit_reached = False
         paths_by_ref = {ref: self._paths_for_ref(ref) for ref in refs}
         seen_snapshots: set[tuple[str, str]] = set()
-        limit_reached = False
         max_paths = max((len(paths) for paths in paths_by_ref.values()), default=0)
         # Round-robin refs so one large branch cannot starve the remaining branches.
         for offset in range(max_paths):
@@ -369,7 +376,7 @@ class ProjectCrawler:
     def help_for(self, agent: str, question: str, *, limit: int = 8) -> str:
         """Broadcast a help request, consult shared evidence, and publish a bounded answer."""
         if not self._local_endpoint_allowed():
-            raise RuntimeError("Project mesh refused to send source context to a non-loopback model endpoint.")
+            raise RuntimeError("Project mesh refused to send source context to a non-loopback or unknown model endpoint.")
         if not self.llm.is_available():
             raise RuntimeError("Local model is unavailable; shared help was not generated.")
         event_id = self.mesh.publish(agent, "help-request", question, recipient="*", kind="request")
@@ -387,7 +394,7 @@ class ProjectCrawler:
                     "provide a concise useful plain-text answer instead of the Guardian's generic JSON review format."
                 ),
             },
-            {"role": "user", "content": f"Help request #{event_id}: {question[:2_000]}\\n\\nShared context:\\n{context[:12_000]}"},
+            {"role": "user", "content": f"Help request #{event_id}: {question[:2_000]}\n\nShared context:\n{context[:12_000]}"},
         ])
         self.mesh.publish("crawler-coordinator", f"help-response:{event_id}", answer, recipient=agent, kind="answer")
         return answer
