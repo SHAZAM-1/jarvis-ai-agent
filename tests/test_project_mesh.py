@@ -377,6 +377,16 @@ def test_verification_transition_is_denied_and_audited_without_claiming_authenti
     assert "No finding truth" in entry["validation_scope"]
     assert entry["outcome"] == "denied_no_authenticated_reviewer"
     assert mesh.verification_audit_for(ids["B"]) == []
+    audit_context = [
+        r for r in _mesh_records(mesh.context_for("jarvis"))
+        if r["record_type"] == "finding_verification_attempt"
+    ]
+    assert len(audit_context) == 1
+    assert audit_context[0]["finding_id"] == ids["A"]
+    assert audit_context[0]["effective_finding_state"] == "unverified"
+    assert audit_context[0]["actor_authenticated"] is False
+    assert audit_context[0]["state_changed"] is False
+    assert audit_context[0]["trust"] == "untrusted_audit_evidence_not_authorization_or_proof"
     with mesh._db() as db:
         row = db.execute("SELECT status FROM mesh_findings WHERE id=?", (ids["A"],)).fetchone()
     assert row["status"] == "unverified"
@@ -481,6 +491,10 @@ def test_audit_rationale_and_evidence_remain_untrusted_in_agent_prompt(tmp_path)
     mesh_message = next(m for m in messages if "untrusted_project_mesh" in m["content"])
     assert mesh_message["role"] == "user"
     assert "PROMPT_SENTINEL" in mesh_message["content"]
+    assert "RATIONALE_SENTINEL" in mesh_message["content"]
+    assert "EVIDENCE_REF_SENTINEL" in mesh_message["content"]
+    assert "actor_authenticated" in mesh_message["content"]
+    assert "untrusted_audit_evidence_not_authorization_or_proof" in mesh_message["content"]
     assert "status" in mesh_message["content"]
     assert "unverified" in mesh_message["content"]
     assert all(
@@ -489,3 +503,37 @@ def test_audit_rationale_and_evidence_remain_untrusted_in_agent_prompt(tmp_path)
         ))
         for m in messages if m["role"] == "system"
     )
+
+
+def test_legacy_schema_without_status_column_remains_writable(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy-write.sqlite3"
+    with sqlite3.connect(db_path) as db:
+        db.execute(
+            "CREATE TABLE mesh_events (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, "
+            "sender TEXT NOT NULL, recipient TEXT NOT NULL, kind TEXT NOT NULL, "
+            "topic TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open')"
+        )
+        db.execute(
+            "CREATE TABLE mesh_findings (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "created_at TEXT NOT NULL, ref_name TEXT NOT NULL, path TEXT NOT NULL, "
+            "specialist TEXT NOT NULL, severity TEXT NOT NULL, summary TEXT NOT NULL, "
+            "evidence TEXT NOT NULL, UNIQUE(ref_name,path,specialist,summary))"
+        )
+        db.execute(
+            "CREATE TABLE mesh_crawls (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "created_at TEXT NOT NULL, refs_seen INTEGER NOT NULL, files_seen INTEGER NOT NULL, "
+            "chunks_reviewed INTEGER NOT NULL, findings INTEGER NOT NULL, skipped INTEGER NOT NULL, "
+            "summary TEXT NOT NULL)"
+        )
+    mesh = ProjectMesh(db_path)
+    assert mesh.record_findings(
+        "refs/heads/old", "src/new.py", "security",
+        json.dumps({"findings": [{
+            "severity": "medium", "summary": "Legacy schema finding", "status": "verified"
+        }]}),
+    ) == 1
+    record = next(r for r in _mesh_records(mesh.context_for("jarvis")) if r["record_type"] == "finding")
+    assert record["status"] == "unverified"
+    assert record["stored_status_untrusted"] is None
