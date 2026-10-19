@@ -19,5 +19,7 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Run Ruff lint
         run: python -m ruff check src/jarvis/agent.py src/jarvis/memory.py tests/test_agent.py tests/test_memory.py src/jarvis/cache_guardian.py tests/test_cache_guardian.py
-      - name: Run tests
+      - name: Run focused memory and conversation regressions
+        run: python -m pytest tests/test_memory.py tests/test_agent.py
+      - name: Run full test suite
         run: python -m pytest
