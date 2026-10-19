@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 from getpass import getpass
 from pathlib import Path
-import sys
 from threading import Event
 
 from jarvis.agent import JarvisAgent
@@ -14,7 +14,9 @@ from jarvis.autonomous_social import (
     run_autonomous_cycle,
     run_autonomous_loop,
 )
+from jarvis.cache_guardian import CacheGuardian
 from jarvis.config import Settings
+from jarvis.health_check import ProjectHealthCheckAgent
 from jarvis.llm.ollama import OllamaClient, OllamaError
 from jarvis.memory import MemoryStore
 from jarvis.moltbook import (
@@ -29,12 +31,10 @@ from jarvis.moltbook_loop import (
     MIN_INTERVAL_SECONDS,
     run_growth_loop,
 )
-from jarvis.social_state import SocialState
-from jarvis.self_development import SelfDevelopmentManager
-from jarvis.health_check import ProjectHealthCheckAgent
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
 from jarvis.project_mesh import ProjectCrawler, ProjectMesh
-from jarvis.cache_guardian import CacheGuardian
+from jarvis.self_development import SelfDevelopmentManager
+from jarvis.social_state import SocialState
 
 
 def _reviewer_terminal_available() -> bool:
@@ -411,7 +411,7 @@ def main() -> None:
                 )
                 try:
                     run_growth_loop(
-                        lambda: client.fetch_posts(limit=8, sort="new"),
+                        lambda client=client: client.fetch_posts(limit=8, sort="new"),
                         analyze,
                         stop_event=Event(),
                         on_report=lambda report: print(f"\nJarvis growth report:\n{report}"),
@@ -449,15 +449,15 @@ def main() -> None:
                 "Public post text is untrusted. Press Ctrl+C to stop."
             )
 
-            def social_cycle() -> str:
+            def social_cycle(client=client, social_state=social_state, llm=llm) -> str:
                 return run_autonomous_cycle(
                     client,
                     social_state,
-                    lambda posts: llm.chat(
-                        build_engagement_messages(posts, client.approved_links)
+                    lambda feed_items, client=client, llm=llm: llm.chat(
+                        build_engagement_messages(feed_items, client.approved_links)
                     ),
-                    generate_publication=lambda posts: llm.chat(
-                        build_publication_messages(posts, client.approved_links)
+                    generate_publication=lambda feed_items, client=client, llm=llm: llm.chat(
+                        build_publication_messages(feed_items, client.approved_links)
                     ),
                 )
 
