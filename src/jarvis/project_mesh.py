@@ -269,15 +269,25 @@ class ProjectMesh:
                 evidence = self.redact(str(item.get("evidence", "" )).strip())[:700]
                 if not summary:
                     continue
-                # Ignore any model-supplied status/approval fields. The database default
-                # is not treated as an authorization mechanism; context_for enforces unverified.
-                cur = db.execute(
-                    """INSERT OR IGNORE INTO mesh_findings
-                       (created_at,ref_name,path,specialist,severity,summary,evidence,status)
-                       VALUES(?,?,?,?,?,?,?,'unverified')""",
-                    (datetime.now(UTC).isoformat(), ref_name[:300], path[:500],
-                     specialist[:80], severity, summary, evidence),
-                )
+                # Ignore any model-supplied status/approval fields. Legacy schemas may
+                # lack the status column; context_for still enforces an effective unverified state.
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(mesh_findings)")}
+                if "status" in columns:
+                    cur = db.execute(
+                        """INSERT OR IGNORE INTO mesh_findings
+                           (created_at,ref_name,path,specialist,severity,summary,evidence,status)
+                           VALUES(?,?,?,?,?,?,?,'unverified')""",
+                        (datetime.now(UTC).isoformat(), ref_name[:300], path[:500],
+                         specialist[:80], severity, summary, evidence),
+                    )
+                else:
+                    cur = db.execute(
+                        """INSERT OR IGNORE INTO mesh_findings
+                           (created_at,ref_name,path,specialist,severity,summary,evidence)
+                           VALUES(?,?,?,?,?,?,?)""",
+                        (datetime.now(UTC).isoformat(), ref_name[:300], path[:500],
+                         specialist[:80], severity, summary, evidence),
+                    )
                 inserted += max(cur.rowcount, 0)
         return inserted
 
