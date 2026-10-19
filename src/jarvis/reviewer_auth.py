@@ -10,6 +10,7 @@ import hmac
 import json
 import os
 import secrets
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,8 @@ class ReviewerAuthenticator:
         try:
             if self.path.is_symlink() or not self.path.is_file():
                 return None
+            if os.name != "nt" and stat.S_IMODE(self.path.stat().st_mode) & 0o077:
+                return None
             record = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(record, dict) or record.get("version") != 1:
                 return None
@@ -67,8 +70,10 @@ class ReviewerAuthenticator:
         try:
             os.chmod(path, 0o600)
         except OSError:
-            # Windows ACLs are platform-specific; callers must review inherited ACLs.
-            pass
+            if os.name != "nt":
+                raise
+        if os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
+            raise PermissionError("Reviewer credential permissions are not owner-only.")
 
     def _create_exclusive(self, record: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
