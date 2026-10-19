@@ -42,7 +42,7 @@ class MemoryStore:
         # System instructions are constructed by the application, never persisted
         # as replayable conversation history. Keep the database schema compatible
         # with existing files, but reject privileged roles at this write boundary.
-        if role not in _CONVERSATION_ROLES:
+        if not isinstance(role, str) or role not in _CONVERSATION_ROLES:
             raise ValueError("role must be user or assistant")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("content must be a non-empty string")
