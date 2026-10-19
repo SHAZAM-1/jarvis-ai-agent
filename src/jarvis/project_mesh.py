@@ -129,8 +129,14 @@ class ProjectMesh:
         with self._db() as db:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(mesh_events)")}
             status_filter = " AND status='open'" if "status" in columns else ""
+            extras = []
+            if "created_at" not in columns:
+                extras.append("NULL AS created_at")
+            if "status" not in columns:
+                extras.append("NULL AS status")
+            select_clause = "*" + ("," + ",".join(extras) if extras else "")
             rows = db.execute(
-                "SELECT * FROM mesh_events WHERE recipient IN ('*', ?)"
+                "SELECT " + select_clause + " FROM mesh_events WHERE recipient IN ('*', ?)"
                 + status_filter + " ORDER BY id DESC LIMIT ?",
                 (agent, limit),
             ).fetchall()
