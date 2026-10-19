@@ -33,7 +33,8 @@ def test_agent_prompt_supports_darija_and_defaults_to_concise_english(tmp_path):
 
 def test_agent_includes_user_approved_lessons_and_saves_reply(tmp_path):
     memory = MemoryStore(tmp_path / "memory.sqlite3")
-    memory.add_lesson("The user prefers answers in Moroccan Darija.")
+    lesson = "The user prefers answers in Moroccan Darija."
+    memory.add_lesson(lesson)
     llm = FakeLLM()
     agent = JarvisAgent(llm, memory)
 
@@ -42,9 +43,9 @@ def test_agent_includes_user_approved_lessons_and_saves_reply(tmp_path):
     assert llm.messages is not None
     system_messages = [m["content"] for m in llm.messages if m["role"] == "system"]
     user_messages = [m["content"] for m in llm.messages if m["role"] == "user"]
-    assert not any("Moroccan Darija" in content for content in system_messages)
+    assert not any(lesson in content for content in system_messages)
     assert any(
-        "Moroccan Darija" in content and "<user_approved_memory_notes>" in content
+        lesson in content and "<user_approved_memory_notes>" in content
         for content in user_messages
     )
     assert memory.recent_messages() == [
