@@ -10,7 +10,11 @@ from threading import Event
 from jarvis.agent import JarvisAgent
 from jarvis.autonomous_social import (
     DEFAULT_INTERVAL_SECONDS as SOCIAL_DEFAULT_INTERVAL_SECONDS,
+)
+from jarvis.autonomous_social import (
     MIN_INTERVAL_SECONDS as SOCIAL_MIN_INTERVAL_SECONDS,
+)
+from jarvis.autonomous_social import (
     run_autonomous_cycle,
     run_autonomous_loop,
 )
