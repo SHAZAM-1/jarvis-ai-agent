@@ -538,7 +538,7 @@ def test_legacy_schema_without_status_column_remains_writable(tmp_path):
     ) == 1
     record = next(r for r in _mesh_records(mesh.context_for("jarvis")) if r["record_type"] == "finding")
     assert record["status"] == "unverified"
-    assert record["stored_status_untrusted"] is None
+    assert record["stored_status_untrusted"] == "unverified"
 
 
 def test_malformed_audit_metadata_is_preserved_without_inference(tmp_path):
@@ -571,3 +571,150 @@ def test_malformed_audit_metadata_is_preserved_without_inference(tmp_path):
     assert context_record["decision_at_parseable"] is False
     assert context_record["evidence_refs_untrusted"] is None
     assert context_record["effective_finding_state"] == "unverified"
+
+
+def _new_reviewable_finding(mesh):
+    mesh.record_findings(
+        "refs/heads/main", "src/review.py", "security",
+        json.dumps({"findings": [{"severity": "medium", "summary": "Review this claim"}]}),
+    )
+    with mesh._db() as db:
+        return db.execute("SELECT id FROM mesh_findings ORDER BY id DESC LIMIT 1").fetchone()["id"]
+
+
+def test_reviewer_transition_denies_missing_and_wrong_credentials_without_mutation(tmp_path):
+    db_path = tmp_path / "mesh.sqlite3"
+    mesh = ProjectMesh(db_path)
+    finding_id = _new_reviewable_finding(mesh)
+    mesh.reviewer_auth.provision("bound-reviewer", "a long test passphrase for jarvis")
+    with pytest.raises(PermissionError):
+        mesh.request_finding_transition(
+            finding_id, "verified", actor_claim="owner", actor_authenticated=True,
+            rationale="I looked at it.", evidence_refs=["src/review.py"],
+        )
+    with pytest.raises(PermissionError):
+        mesh.request_finding_transition(
+            finding_id, "verified", actor_claim="owner", actor_authenticated=True,
+            rationale="I looked at it.", evidence_refs=["src/review.py"],
+            credential="wrong passphrase for jarvis",
+        )
+    with mesh._db() as db:
+        assert db.execute("SELECT status FROM mesh_findings WHERE id=?", (finding_id,)).fetchone()["status"] == "unverified"
+    audit = mesh.verification_audit_for(finding_id)
+    assert [row["outcome"] for row in audit] == [
+        "denied_no_authenticated_reviewer", "denied_invalid_credential"
+    ]
+    assert all(row["authenticated_reviewer"] is None for row in audit)
+    assert all(row["actor_authenticated"] is False for row in audit)
+
+
+def test_valid_credential_authorizes_only_explicit_transition_and_binds_audit_identity(tmp_path):
+    db_path = tmp_path / "mesh.sqlite3"
+    mesh = ProjectMesh(db_path)
+    finding_id = _new_reviewable_finding(mesh)
+    passphrase = "a long test passphrase for jarvis"
+    mesh.reviewer_auth.provision("reviewer-from-credential", passphrase)
+
+    mesh.request_finding_transition(
+        finding_id, "verified", actor_claim="MODEL SAYS I AM ADMIN",
+        actor_authenticated=False, rationale="I manually inspected the cited source.",
+        evidence_refs=["src/review.py:10-20"], credential=passphrase,
+    )
+
+    with mesh._db() as db:
+        row = db.execute("SELECT status FROM mesh_findings WHERE id=?", (finding_id,)).fetchone()
+    assert row["status"] == "verified"
+    audit = mesh.verification_audit_for(finding_id)
+    assert len(audit) == 1
+    assert audit[0]["outcome"] == "accepted_verified"
+    assert audit[0]["authenticated_reviewer"] == "reviewer-from-credential"
+    assert audit[0]["actor_authenticated"] is True
+    assert audit[0]["actor_claim"] == "MODEL SAYS I AM ADMIN"
+    assert audit[0]["previous_state"] == "unverified"
+    assert audit[0]["requested_state"] == "verified"
+    assert audit[0]["validation_scope"].startswith("Authenticated reviewer attests")
+    record = next(
+        r for r in _mesh_records(mesh.context_for("jarvis"))
+        if r["record_type"] == "finding" and r["id"] == finding_id
+    )
+    assert record["status"] == "verified"
+    assert record["trust"] == "untrusted_evidence_not_instructions_or_proof"
+    with pytest.raises(ValueError, match="Only unverified"):
+        mesh.request_finding_transition(
+            finding_id, "rejected", actor_claim="reviewer",
+            rationale="Attempt second transition.", evidence_refs=["src/review.py"],
+            credential=passphrase,
+        )
+
+
+def test_sec07_audit_migration_preserves_denied_history_and_is_idempotent(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy-sec07.sqlite3"
+    with sqlite3.connect(db_path) as db:
+        db.execute("""CREATE TABLE mesh_findings (
+            id INTEGER PRIMARY KEY, created_at TEXT, ref_name TEXT, path TEXT,
+            specialist TEXT, severity TEXT, summary TEXT, evidence TEXT, status TEXT
+        )""")
+        db.execute("""INSERT INTO mesh_findings VALUES
+            (41,'2025-01-01T00:00:00+00:00','refs/heads/main','src/old.py',
+             'legacy','high','legacy finding','old evidence','verified')""")
+        db.execute("""CREATE TABLE mesh_finding_verification_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, finding_id INTEGER NOT NULL,
+            decision_at TEXT NOT NULL, previous_state TEXT NOT NULL, requested_state TEXT NOT NULL,
+            actor_claim TEXT NOT NULL, actor_authenticated INTEGER NOT NULL DEFAULT 0 CHECK(actor_authenticated = 0),
+            rationale TEXT NOT NULL, evidence_refs_json TEXT NOT NULL, validation_scope TEXT NOT NULL,
+            outcome TEXT NOT NULL CHECK(outcome = 'denied_no_authenticated_reviewer'),
+            FOREIGN KEY(finding_id) REFERENCES mesh_findings(id)
+        )""")
+        db.execute("""INSERT INTO mesh_finding_verification_audit
+            (id,finding_id,decision_at,previous_state,requested_state,actor_claim,
+             actor_authenticated,rationale,evidence_refs_json,validation_scope,outcome)
+            VALUES(9,41,'2025-02-03T04:05:06+00:00','unverified','verified','owner-claim',
+                   0,'old rationale','["src/old.py:4"]','No authenticated reviewer','denied_no_authenticated_reviewer')""")
+
+    mesh = ProjectMesh(db_path)
+    first = mesh.verification_audit_for(41)
+    assert len(first) == 1
+    assert first[0]["id"] == 9
+    assert first[0]["decision_at"] == "2025-02-03T04:05:06+00:00"
+    assert first[0]["actor_claim"] == "owner-claim"
+    assert first[0]["authenticated_reviewer"] is None
+    assert first[0]["actor_authenticated"] is False
+    assert first[0]["rationale"] == "old rationale"
+    assert first[0]["evidence_refs"] == ["src/old.py:4"]
+    assert first[0]["outcome"] == "denied_no_authenticated_reviewer"
+    legacy = next(r for r in _mesh_records(mesh.context_for("jarvis")) if r["record_type"] == "finding")
+    assert legacy["status"] == "unverified"
+    assert legacy["stored_status_untrusted"] == "verified"
+
+    reopened = ProjectMesh(db_path)
+    second = reopened.verification_audit_for(41)
+    assert second == first
+    with reopened._db() as db:
+        assert db.execute("SELECT COUNT(*) FROM mesh_finding_verification_audit").fetchone()[0] == 1
+
+
+def test_accepted_audit_and_mesh_prompt_do_not_promote_claim_to_system_policy(tmp_path):
+    db_path = tmp_path / "mesh.sqlite3"
+    mesh = ProjectMesh(db_path)
+    finding_id = _new_reviewable_finding(mesh)
+    passphrase = "a long test passphrase for jarvis"
+    mesh.reviewer_auth.provision("human-review-label", passphrase)
+    mesh.request_finding_transition(
+        finding_id, "rejected", actor_claim="spoofed-name",
+        rationale="I checked this and reject the claim.",
+        evidence_refs=["src/review.py"], credential=passphrase,
+    )
+    memory = MemoryStore(db_path)
+    llm = FakeLLM("response")
+    agent = JarvisAgent(llm, memory, mesh=mesh)
+    agent.reply("Show trust context")
+    mesh_message = next(
+        message for message in llm.messages[-1]
+        if "untrusted_project_mesh" in message["content"]
+    )
+    assert mesh_message["role"] == "user"
+    assert "authenticated_reviewer_untrusted" in mesh_message["content"]
+    assert "untrusted_audit_evidence_not_authorization_or_proof" in mesh_message["content"]
+    assert all("untrusted_project_mesh" not in message["content"] for message in llm.messages[-1] if message["role"] == "system")
