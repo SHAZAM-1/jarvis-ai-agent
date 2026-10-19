@@ -263,6 +263,7 @@ class ProjectMesh:
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
 
         for audit in audit_rows:
+            decision_at, decision_at_parseable = self._timestamp_metadata(audit["decision_at"])
             try:
                 refs = json.loads(audit["evidence_refs_json"])
                 if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
@@ -273,7 +274,8 @@ class ProjectMesh:
                 "record_type": "finding_verification_attempt",
                 "id": audit["id"],
                 "finding_id": audit["finding_id"],
-                "decision_at": audit["decision_at"],
+                "decision_at": decision_at,
+                "decision_at_parseable": decision_at_parseable,
                 "previous_state": "unverified",
                 "effective_finding_state": "unverified",
                 "requested_state_untrusted": audit["requested_state"],
@@ -414,6 +416,9 @@ class ProjectMesh:
                 item.pop("evidence_refs_json", None)
                 item["evidence_refs"] = []
             # Never infer authorization from an actor label or a malformed legacy value.
+            decision_at, decision_at_parseable = self._timestamp_metadata(item["decision_at"])
+            item["decision_at"] = decision_at
+            item["decision_at_parseable"] = decision_at_parseable
             item["actor_authenticated"] = item["actor_authenticated"] == 1
             if item["outcome"] != "denied_no_authenticated_reviewer":
                 item["outcome"] = "unknown_untrusted_legacy_outcome"
