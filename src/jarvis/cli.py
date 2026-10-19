@@ -218,6 +218,8 @@ def main() -> None:
                         f"Jarvis: Finding #{finding_id} marked {target}. This records your review decision; "
                         "Jarvis has not independently established the claim's truth."
                     )
+            except (EOFError, KeyboardInterrupt):
+                print("\nJarvis: Reviewer operation cancelled; no further action was taken.")
             except PermissionError:
                 print("Jarvis: Reviewer authentication failed or is unavailable; no finding state changed.")
             except (OSError, ValueError, RuntimeError) as exc:
