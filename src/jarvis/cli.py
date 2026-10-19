@@ -46,6 +46,16 @@ def _reviewer_terminal_available() -> bool:
     return bool(sys.stdin.isatty() and sys.stderr.isatty())
 
 
+def _provision_reviewer_interactively(auth, reviewer_label: str) -> bool:
+    """Require matching hidden passphrase entries before writing the credential."""
+    passphrase = getpass("New reviewer passphrase (12+ characters): ")
+    confirmation = getpass("Confirm reviewer passphrase: ")
+    if passphrase != confirmation:
+        return False
+    auth.provision(reviewer_label, passphrase)
+    return True
+
+
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
     """Show a safe local diagnostic without exposing credentials or approved URLs."""
     available = llm.is_available()
@@ -181,12 +191,9 @@ def main() -> None:
                         print("Jarvis: A reviewer credential already exists. Use /reviewer-rotate.")
                         continue
                     reviewer_label = input("Reviewer label (audit label, not identity proof): ").strip()
-                    passphrase = getpass("New reviewer passphrase (12+ characters): ")
-                    confirmation = getpass("Confirm reviewer passphrase: ")
-                    if passphrase != confirmation:
+                    if not _provision_reviewer_interactively(auth, reviewer_label):
                         print("Jarvis: Passphrases did not match; no credential was created.")
                         continue
-                    auth.provision(reviewer_label, passphrase)
                     print("Jarvis: Reviewer credential provisioned. Keep the passphrase private.")
                 elif command == "/reviewer-rotate":
                     current = getpass("Current reviewer passphrase: ")
