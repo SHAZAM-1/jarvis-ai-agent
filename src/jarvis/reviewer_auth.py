@@ -19,6 +19,7 @@ _SCRYPT_R = 8
 _SCRYPT_P = 1
 _KEY_LENGTH = 32
 _MIN_PASSPHRASE_LENGTH = 12
+_MAX_PASSPHRASE_LENGTH = 1024
 
 
 class ReviewerAuthenticator:
@@ -38,6 +39,8 @@ class ReviewerAuthenticator:
     def _validate_passphrase(passphrase: str) -> None:
         if not isinstance(passphrase, str) or len(passphrase) < _MIN_PASSPHRASE_LENGTH:
             raise ValueError("Reviewer passphrase must contain at least 12 characters.")
+        if len(passphrase) > _MAX_PASSPHRASE_LENGTH:
+            raise ValueError("Reviewer passphrase must contain at most 1024 characters.")
 
     def _read_record(self) -> dict[str, Any] | None:
         try:
@@ -106,7 +109,7 @@ class ReviewerAuthenticator:
 
     def authenticate(self, passphrase: str) -> str | None:
         record = self._read_record()
-        if record is None or not isinstance(passphrase, str):
+        if record is None or not isinstance(passphrase, str) or len(passphrase) > _MAX_PASSPHRASE_LENGTH:
             return None
         try:
             salt = bytes.fromhex(record["salt"])
