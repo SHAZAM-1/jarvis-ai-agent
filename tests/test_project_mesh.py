@@ -213,7 +213,8 @@ def test_findings_keep_provenance_isolated_and_do_not_fabricate_missing_metadata
     assert findings["SECOND_SUMMARY"]["path"] == "src/two.py"
     assert findings["SECOND_SUMMARY"]["specialist"] == "architecture"
     assert findings["SECOND_SUMMARY"]["evidence"] is None
-    assert findings["SECOND_SUMMARY"]["status"] is None
+    assert findings["SECOND_SUMMARY"]["status"] == "unverified"
+    assert findings["SECOND_SUMMARY"]["stored_status_untrusted"] == ""
     assert findings["SECOND_SUMMARY"]["created_at"] is None
     assert findings["SECOND_SUMMARY"]["created_at_parseable"] is None
 
@@ -269,7 +270,8 @@ def test_legacy_mesh_schema_reports_missing_metadata_without_inference(tmp_path)
     assert event["created_at"] is None
     assert event["created_at_parseable"] is None
     assert finding["id"] == 2
-    assert finding["status"] is None
+    assert finding["status"] == "unverified"
+    assert finding["stored_status_untrusted"] is None
     assert finding["created_at"] is None
     assert finding["created_at_parseable"] is None
     assert finding["evidence"] is None
