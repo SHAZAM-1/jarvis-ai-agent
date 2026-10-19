@@ -57,3 +57,14 @@ def test_rotation_and_revocation_require_current_passphrase(tmp_path):
         auth.revoke("wrong passphrase sufficiently long")
     auth.revoke("second passphrase sufficiently long")
     assert not auth.is_configured()
+
+
+def test_reviewer_cli_terminal_gate_rejects_noninteractive_input(monkeypatch):
+    import io
+    import sys
+
+    from jarvis.cli import _reviewer_terminal_available
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not a terminal"))
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    assert _reviewer_terminal_available() is False
