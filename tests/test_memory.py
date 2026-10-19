@@ -123,3 +123,24 @@ def test_learning_note_length_is_limited(tmp_path):
     memory = MemoryStore(tmp_path / "memory.sqlite3")
     with pytest.raises(ValueError):
         memory.add_lesson("x" * 2001)
+
+
+
+def test_store_instances_share_the_single_persistent_conversation(tmp_path):
+    """The current product model is one owner timeline shared across restarts."""
+    db_path = tmp_path / "memory.sqlite3"
+    first_run = MemoryStore(db_path)
+    first_run.add_message("user", "message from the earlier run")
+    first_run.add_message("assistant", "reply from the earlier run")
+
+    next_run = MemoryStore(db_path)
+    assert next_run.recent_messages() == [
+        {"role": "user", "content": "message from the earlier run"},
+        {"role": "assistant", "content": "reply from the earlier run"},
+    ]
+
+    next_run.add_message("user", "message from the next run")
+    assert first_run.recent_messages()[-1] == {
+        "role": "user",
+        "content": "message from the next run",
+    }
