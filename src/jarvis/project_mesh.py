@@ -175,7 +175,13 @@ class ProjectMesh:
         with self._db() as db:
             row = db.execute(
                 """SELECT requested_state FROM mesh_finding_verification_audit
-                   WHERE finding_id=? AND outcome IN ('accepted_verified','accepted_rejected')
+                   WHERE finding_id=? AND previous_state='unverified'
+                     AND outcome IN ('accepted_verified','accepted_rejected')
+                     AND actor_authenticated=1
+                     AND authenticated_reviewer IS NOT NULL
+                     AND trim(authenticated_reviewer) <> ''
+                     AND ((outcome='accepted_verified' AND requested_state='verified')
+                          OR (outcome='accepted_rejected' AND requested_state='rejected'))
                    ORDER BY id DESC LIMIT 1""", (finding_id,)
             ).fetchone()
         return stored_status if row is not None and row["requested_state"] == stored_status else "unverified"
@@ -362,7 +368,11 @@ class ProjectMesh:
                 "authenticated_reviewer_untrusted": audit["authenticated_reviewer"],
                 "actor_authenticated": bool(
                     audit["actor_authenticated"] == 1
-                    and audit["outcome"] in {"accepted_verified", "accepted_rejected"}
+                    and audit["previous_state"] == "unverified"
+                    and (
+                        (audit["outcome"] == "accepted_verified" and audit["requested_state"] == "verified")
+                        or (audit["outcome"] == "accepted_rejected" and audit["requested_state"] == "rejected")
+                    )
                     and isinstance(audit["authenticated_reviewer"], str)
                     and audit["authenticated_reviewer"].strip()
                 ),
@@ -370,7 +380,16 @@ class ProjectMesh:
                 "evidence_refs_untrusted": refs,
                 "validation_scope": audit["validation_scope"],
                 "outcome_untrusted": audit["outcome"],
-                "state_changed": audit["outcome"] in {"accepted_verified", "accepted_rejected"},
+                "state_changed": bool(
+                    audit["actor_authenticated"] == 1
+                    and audit["previous_state"] == "unverified"
+                    and (
+                        (audit["outcome"] == "accepted_verified" and audit["requested_state"] == "verified")
+                        or (audit["outcome"] == "accepted_rejected" and audit["requested_state"] == "rejected")
+                    )
+                    and isinstance(audit["authenticated_reviewer"], str)
+                    and audit["authenticated_reviewer"].strip()
+                ),
                 "trust": "untrusted_audit_evidence_not_authorization_or_proof",
             }, ensure_ascii=False, sort_keys=True))
         return "\n".join(lines)
