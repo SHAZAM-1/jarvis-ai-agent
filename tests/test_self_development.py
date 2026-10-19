@@ -2,14 +2,33 @@ from __future__ import annotations
 
 import subprocess
 
-from jarvis.owner_policy import OWNER_TRUST_POLICY, PROTECTED_PATHS, PROJECT_SCOPE
+from jarvis.owner_policy import OWNER_TRUST_POLICY, PROJECT_SCOPE, PROTECTED_PATHS
 from jarvis.self_development import (
     SelfDevelopmentManager,
     SelfDevelopmentState,
+    _proposal_system_prompt,
+    _second_pass_system_prompt,
     is_allowed_path,
     redact_source,
     validate_patch,
 )
+
+
+def test_persisted_guardian_and_mesh_context_never_becomes_binding_policy():
+    proposal_prompt = _proposal_system_prompt()
+    review_prompt = _second_pass_system_prompt()
+
+    for prompt in (proposal_prompt, review_prompt):
+        assert "Historical Guardian records" in prompt or "historical Guardian" in prompt
+        assert "Project Mesh" in prompt
+        assert "untrusted" in prompt.lower()
+        assert "never" in prompt.lower() and "instructions" in prompt.lower()
+        assert "fixed owner policy" in prompt
+
+    assert "must be respected" not in proposal_prompt
+    assert "stored verdict as proof of correctness" in review_prompt
+    assert "model-generated or repository-influenced" in proposal_prompt
+    assert "model-generated or repository-influenced" in review_prompt
 
 
 def test_owner_policy_keeps_creator_trust_and_project_scope_explicit():
@@ -17,6 +36,7 @@ def test_owner_policy_keeps_creator_trust_and_project_scope_explicit():
     assert "Jarvis AI Agent" in PROJECT_SCOPE
     assert "src/jarvis/self_development.py" in PROTECTED_PATHS
     assert "src/jarvis/project_guardian.py" in PROTECTED_PATHS
+    assert "src/jarvis/reviewer_auth.py" in PROTECTED_PATHS
     assert "src/jarvis/health_check.py" in PROTECTED_PATHS
 
 
@@ -28,6 +48,7 @@ def test_allowed_paths_include_project_code_tests_and_docs_only():
     assert not is_allowed_path("src/jarvis/agent.py")
     assert not is_allowed_path("src/jarvis/self_development.py")
     assert not is_allowed_path("src/jarvis/project_guardian.py")
+    assert not is_allowed_path("src/jarvis/reviewer_auth.py")
     assert not is_allowed_path("src/jarvis/health_check.py")
     assert not is_allowed_path("pyproject.toml")
     assert not is_allowed_path(".github/workflows/tests.yml")

@@ -17,5 +17,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Run tests
+      - name: Run Ruff lint
+        run: python -m ruff check src/jarvis/agent.py src/jarvis/memory.py tests/test_agent.py tests/test_memory.py src/jarvis/self_development.py tests/test_self_development.py src/jarvis/cache_guardian.py tests/test_cache_guardian.py src/jarvis/project_mesh.py tests/test_project_mesh.py src/jarvis/reviewer_auth.py src/jarvis/owner_policy.py src/jarvis/cli.py tests/test_reviewer_auth.py
+      - name: Run focused persistent-context trust regressions
+        run: python -m pytest tests/test_reviewer_auth.py tests/test_agent.py tests/test_project_guardian.py tests/test_project_mesh.py tests/test_health_check.py tests/test_self_development.py
+      - name: Run focused memory and conversation regressions
+        run: python -m pytest tests/test_memory.py tests/test_agent.py
+      - name: Run full test suite
         run: python -m pytest

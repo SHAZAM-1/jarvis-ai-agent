@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import sys
+from getpass import getpass
 from pathlib import Path
 from threading import Event
 
 from jarvis.agent import JarvisAgent
 from jarvis.autonomous_social import (
     DEFAULT_INTERVAL_SECONDS as SOCIAL_DEFAULT_INTERVAL_SECONDS,
+)
+from jarvis.autonomous_social import (
     MIN_INTERVAL_SECONDS as SOCIAL_MIN_INTERVAL_SECONDS,
+)
+from jarvis.autonomous_social import (
     run_autonomous_cycle,
     run_autonomous_loop,
 )
+from jarvis.cache_guardian import CacheGuardian
 from jarvis.config import Settings
+from jarvis.health_check import ProjectHealthCheckAgent
 from jarvis.llm.ollama import OllamaClient, OllamaError
 from jarvis.memory import MemoryStore
 from jarvis.moltbook import (
@@ -27,10 +35,25 @@ from jarvis.moltbook_loop import (
     MIN_INTERVAL_SECONDS,
     run_growth_loop,
 )
-from jarvis.social_state import SocialState
-from jarvis.self_development import SelfDevelopmentManager
-from jarvis.health_check import ProjectHealthCheckAgent
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
+from jarvis.project_mesh import ProjectCrawler, ProjectMesh
+from jarvis.self_development import SelfDevelopmentManager
+from jarvis.social_state import SocialState
+
+
+def _reviewer_terminal_available() -> bool:
+    """Reviewer secrets may only be entered from a real interactive terminal."""
+    return bool(sys.stdin.isatty() and sys.stderr.isatty())
+
+
+def _provision_reviewer_interactively(auth, reviewer_label: str) -> bool:
+    """Require matching hidden passphrase entries before writing the credential."""
+    passphrase = getpass("New reviewer passphrase (12+ characters): ")
+    confirmation = getpass("Confirm reviewer passphrase: ")
+    if passphrase != confirmation:
+        return False
+    auth.provision(reviewer_label, passphrase)
+    return True
 
 
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
@@ -61,6 +84,13 @@ def _print_help() -> None:
         "  /status                     Show local health and safety settings\n"
         "  /health-check               Analyze project files, all Git branches, environment, and tests with local AI\n"
         "  /guardian                   Show Guardian rules and recent project evaluations\n"
+        "  /mesh                       Show shared agent messages and crawler status\n"
+        "  /mesh-crawl                 Concurrently review visible project files across Git refs\n"
+        "  /mesh-ask <question>        Ask the shared project knowledge mesh for help\n"
+        "  /reviewer-provision         Provision the local reviewer passphrase (first use)\n"
+        "  /reviewer-rotate            Rotate the local reviewer passphrase\n"
+        "  /reviewer-revoke            Revoke the local reviewer credential\n"
+        "  /mesh-review <id> <verified|rejected>  Review a finding interactively\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -83,7 +113,11 @@ def main() -> None:
     memory = MemoryStore(settings.db_path)
     social_state = SocialState(settings.db_path)
     guardian = ProjectGuardian(llm, settings.db_path)
-    agent = JarvisAgent(llm, memory, guardian=guardian)
+    mesh = ProjectMesh(settings.db_path)
+    project_root = Path(__file__).resolve().parents[2]
+    crawler = ProjectCrawler(llm, project_root, mesh)
+    cache_guardian = CacheGuardian(project_root)
+    agent = JarvisAgent(llm, memory, guardian=guardian, mesh=mesh)
 
     print("Jarvis AI Agent — local mode")
     print(f"Model: {settings.model}")
@@ -115,12 +149,126 @@ def main() -> None:
             print(GUARDIAN_RULES)
             print("\n" + guardian.context_summary())
             continue
+        if command == "/cleanup":
+            try:
+                report = cache_guardian.scan()
+                print("JARVIS CACHE GUARDIAN — SAFE PROJECT-ONLY CLEANUP")
+                print(f"Scope: {report.root}")
+                print(f"Age rule: only allow-listed cache artifacts untouched for at least {report.min_age_days} days.")
+                print("Protected: Git history, virtual environments, dependencies, databases, memory, logs, credentials, model/Ollama/Docker caches, and files outside this project.")
+                if not report.candidates:
+                    print("No eligible stale cache artifacts found. Nothing was changed.")
+                    continue
+                for item in report.candidates:
+                    print(f"  - {item.path} | {item.kind} | {item.size_bytes} bytes")
+                print(f"Candidates: {report.count}; potential space: {report.total_bytes} bytes.")
+                print("This is a preview only. Type CLEAN to remove only these revalidated cache entries; anything else cancels.")
+                try:
+                    confirmation = input("Confirm cleanup: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    confirmation = ""
+                if confirmation != "CLEAN":
+                    print("Jarvis: Cleanup cancelled. No files were changed.")
+                    continue
+                removed = cache_guardian.clean(report)
+                print(f"Jarvis: Removed {len(removed)} stale cache entries; no project source or persistent data was targeted.")
+                for path in removed:
+                    print(f"  removed: {path}")
+            except (OSError, RuntimeError, ValueError) as exc:
+                print(f"Jarvis: Cache cleanup stopped safely: {type(exc).__name__}: {exc}")
+            continue
+        if command in {"/reviewer-provision", "/reviewer-rotate", "/reviewer-revoke", "/mesh-review"}:
+            if not _reviewer_terminal_available():
+                print("Jarvis: Reviewer operations require an interactive terminal; no action was taken.")
+                continue
+            auth = mesh.reviewer_auth
+            if auth is None:
+                print("Jarvis: Reviewer credentials are unavailable for an in-memory database.")
+                continue
+            try:
+                if command == "/reviewer-provision":
+                    if auth.is_configured():
+                        print("Jarvis: A reviewer credential already exists. Use /reviewer-rotate.")
+                        continue
+                    reviewer_label = input("Reviewer label (audit label, not identity proof): ").strip()
+                    if not _provision_reviewer_interactively(auth, reviewer_label):
+                        print("Jarvis: Passphrases did not match; no credential was created.")
+                        continue
+                    print("Jarvis: Reviewer credential provisioned. Keep the passphrase private.")
+                elif command == "/reviewer-rotate":
+                    current = getpass("Current reviewer passphrase: ")
+                    new = getpass("New reviewer passphrase (12+ characters): ")
+                    confirmation = getpass("Confirm new reviewer passphrase: ")
+                    if new != confirmation:
+                        print("Jarvis: Passphrases did not match; credential unchanged.")
+                        continue
+                    auth.rotate(current, new)
+                    print("Jarvis: Reviewer passphrase rotated.")
+                elif command == "/reviewer-revoke":
+                    current = getpass("Current reviewer passphrase: ")
+                    auth.revoke(current)
+                    print("Jarvis: Reviewer credential revoked. Finding decisions remain in the audit history.")
+                else:
+                    parts = argument.split()
+                    if len(parts) != 2:
+                        print("Jarvis: Usage: /mesh-review <numeric finding ID> <verified|rejected>")
+                        continue
+                    try:
+                        finding_id = int(parts[0])
+                    except ValueError:
+                        print("Jarvis: Finding ID must be numeric.")
+                        continue
+                    target = parts[1].lower()
+                    if target not in {"verified", "rejected"}:
+                        print("Jarvis: Target must be 'verified' or 'rejected'.")
+                        continue
+                    passphrase = getpass("Reviewer passphrase: ")
+                    rationale = input("Review rationale (what you checked): ").strip()
+                    evidence_text = input("Evidence references (comma-separated): ").strip()
+                    evidence_refs = [item.strip() for item in evidence_text.split(",") if item.strip()]
+                    mesh.request_finding_transition(
+                        finding_id, target, actor_claim="interactive-cli",
+                        rationale=rationale, evidence_refs=evidence_refs, credential=passphrase,
+                    )
+                    print(
+                        f"Jarvis: Finding #{finding_id} marked {target}. This records your review decision; "
+                        "Jarvis has not independently established the claim's truth."
+                    )
+            except (EOFError, KeyboardInterrupt):
+                print("\nJarvis: Reviewer operation cancelled; no further action was taken.")
+            except PermissionError:
+                print("Jarvis: Reviewer authentication failed or is unavailable; no finding state changed.")
+            except (OSError, ValueError, RuntimeError) as exc:
+                print(f"Jarvis: Reviewer operation stopped safely ({type(exc).__name__}).")
+            continue
+        if command in {"/mesh", "/mesh-crawl", "/mesh-ask"}:
+            if command == "/mesh":
+                print("JARVIS PROJECT MESH — SHARED KNOWLEDGE BUS")
+                print(crawler.status())
+                print(mesh.context_for("jarvis", limit=12))
+            elif command == "/mesh-crawl":
+                print("Jarvis: Starting bounded, read-only concurrent crawl of visible Git refs and text files.")
+                print("This may use many local model calls. No files, branches, commits, or remotes will be changed.")
+                try:
+                    print(crawler.crawl().summary)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    print(f"Jarvis mesh crawl stopped safely: {type(exc).__name__}: {exc}")
+            else:
+                if not argument.strip():
+                    print("Jarvis: Usage: /mesh-ask <question>")
+                else:
+                    try:
+                        print(crawler.help_for("jarvis", argument.strip()))
+                    except (RuntimeError, ValueError, OSError) as exc:
+                        print(f"Jarvis mesh help unavailable: {type(exc).__name__}: {exc}")
+            continue
         if command == "/health-check":
             health_agent = ProjectHealthCheckAgent(
                 llm,
                 Path(__file__).resolve().parents[2],
                 model_name=settings.model,
                 guardian=guardian,
+                mesh=mesh,
             )
             print("Jarvis: Starting read-only project health analysis. This may take a few minutes.")
             print(health_agent.run())
@@ -274,7 +422,7 @@ def main() -> None:
                 )
                 try:
                     run_growth_loop(
-                        lambda: client.fetch_posts(limit=8, sort="new"),
+                        lambda client=client: client.fetch_posts(limit=8, sort="new"),
                         analyze,
                         stop_event=Event(),
                         on_report=lambda report: print(f"\nJarvis growth report:\n{report}"),
@@ -312,15 +460,15 @@ def main() -> None:
                 "Public post text is untrusted. Press Ctrl+C to stop."
             )
 
-            def social_cycle() -> str:
+            def social_cycle(client=client, social_state=social_state, llm=llm) -> str:
                 return run_autonomous_cycle(
                     client,
                     social_state,
-                    lambda posts: llm.chat(
-                        build_engagement_messages(posts, client.approved_links)
+                    lambda feed_items, client=client, llm=llm: llm.chat(
+                        build_engagement_messages(feed_items, client.approved_links)
                     ),
-                    generate_publication=lambda posts: llm.chat(
-                        build_publication_messages(posts, client.approved_links)
+                    generate_publication=lambda feed_items, client=client, llm=llm: llm.chat(
+                        build_publication_messages(feed_items, client.approved_links)
                     ),
                 )
 
