@@ -37,6 +37,11 @@ from jarvis.project_mesh import ProjectCrawler, ProjectMesh
 from jarvis.cache_guardian import CacheGuardian
 
 
+def _reviewer_terminal_available() -> bool:
+    """Reviewer secrets may only be entered from a real interactive terminal."""
+    return bool(sys.stdin.isatty() and sys.stderr.isatty())
+
+
 def _print_status(settings: Settings, llm: OllamaClient) -> None:
     """Show a safe local diagnostic without exposing credentials or approved URLs."""
     available = llm.is_available()
@@ -159,7 +164,7 @@ def main() -> None:
                 print(f"Jarvis: Cache cleanup stopped safely: {type(exc).__name__}: {exc}")
             continue
         if command in {"/reviewer-provision", "/reviewer-rotate", "/reviewer-revoke", "/mesh-review"}:
-            if not (sys.stdin.isatty() and sys.stderr.isatty()):
+            if not _reviewer_terminal_available():
                 print("Jarvis: Reviewer operations require an interactive terminal; no action was taken.")
                 continue
             auth = mesh.reviewer_auth
