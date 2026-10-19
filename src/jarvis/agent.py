@@ -118,7 +118,8 @@ class JarvisAgent:
             message
             for message in history
             if isinstance(message, dict)
-            and message.get("role") in _CONVERSATION_ROLES
+            and isinstance(message.get("role"), str)
+            and message["role"] in _CONVERSATION_ROLES
             and isinstance(message.get("content"), str)
             and message["content"].strip()
         )
