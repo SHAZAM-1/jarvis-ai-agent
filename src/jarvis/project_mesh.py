@@ -419,7 +419,10 @@ class ProjectMesh:
             decision_at, decision_at_parseable = self._timestamp_metadata(item["decision_at"])
             item["decision_at"] = decision_at
             item["decision_at_parseable"] = decision_at_parseable
-            item["actor_authenticated"] = item["actor_authenticated"] == 1
+            item["stored_actor_authenticated_untrusted"] = item["actor_authenticated"]
+            # This application has no authentication provider, so a stored flag can
+            # never establish reviewer identity, even if the database was edited.
+            item["actor_authenticated"] = False
             if item["outcome"] != "denied_no_authenticated_reviewer":
                 item["outcome"] = "unknown_untrusted_legacy_outcome"
             result.append(item)
