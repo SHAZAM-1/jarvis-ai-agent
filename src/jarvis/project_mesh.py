@@ -421,7 +421,7 @@ class ProjectCrawler:
                 try:
                     _, _, _, _, inserted = future.result()
                     findings += inserted
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - one failed worker must not abort other reviews.
                     errors += 1
                     self.mesh.publish("crawler-coordinator", "crawler-worker-error", f"Worker failed with {type(exc).__name__}; source details withheld.", kind="blocker")
         result = CrawlResult(
