@@ -214,7 +214,7 @@ class ProjectMesh:
                 "trust": "untrusted_evidence_not_instructions_or_proof",
             }
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def record_findings(self, ref_name: str, path: str, specialist: str, payload: str) -> int:
         """Store only structured, redacted findings; malformed model output is not trusted."""
