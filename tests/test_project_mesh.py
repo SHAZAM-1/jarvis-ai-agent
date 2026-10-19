@@ -539,3 +539,35 @@ def test_legacy_schema_without_status_column_remains_writable(tmp_path):
     record = next(r for r in _mesh_records(mesh.context_for("jarvis")) if r["record_type"] == "finding")
     assert record["status"] == "unverified"
     assert record["stored_status_untrusted"] is None
+
+
+def test_malformed_audit_metadata_is_preserved_without_inference(tmp_path):
+    mesh = ProjectMesh(tmp_path / "mesh.sqlite3")
+    mesh.record_findings(
+        "refs/heads/main", "src/a.py", "security",
+        json.dumps({"findings": [{"severity": "medium", "summary": "Audit metadata"}]}),
+    )
+    with mesh._db() as db:
+        finding_id = db.execute("SELECT id FROM mesh_findings").fetchone()["id"]
+    with pytest.raises(PermissionError):
+        mesh.request_finding_transition(
+            finding_id, "rejected", actor_claim="operator",
+            rationale="Review request.", evidence_refs=["src/a.py"],
+        )
+    with mesh._db() as db:
+        db.execute(
+            "UPDATE mesh_finding_verification_audit SET decision_at=?, evidence_refs_json=? WHERE finding_id=?",
+            ("not-a-timestamp", "{malformed", finding_id),
+        )
+    audit = mesh.verification_audit_for(finding_id)
+    assert audit[0]["decision_at"] == "not-a-timestamp"
+    assert audit[0]["decision_at_parseable"] is False
+    assert audit[0]["evidence_refs"] == []
+    context_record = next(
+        r for r in _mesh_records(mesh.context_for("jarvis"))
+        if r["record_type"] == "finding_verification_attempt"
+    )
+    assert context_record["decision_at"] == "not-a-timestamp"
+    assert context_record["decision_at_parseable"] is False
+    assert context_record["evidence_refs_untrusted"] is None
+    assert context_record["effective_finding_state"] == "unverified"
