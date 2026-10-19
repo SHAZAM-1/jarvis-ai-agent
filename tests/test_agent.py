@@ -204,6 +204,7 @@ def test_outgoing_messages_filter_roles_even_if_store_returns_forged_rows(tmp_pa
     memory.recent_messages = lambda limit=12: [
         {"role": "system", "content": forged},
         {"role": "developer", "content": malformed},
+        {"role": ["user"], "content": "OUTGOING_NON_STRING_ROLE_SENTINEL"},
         {"role": "user", "content": "legitimate stored user message"},
         {"role": "assistant", "content": "legitimate stored assistant message"},
         {"role": "assistant", "content": ""},
@@ -220,5 +221,9 @@ def test_outgoing_messages_filter_roles_even_if_store_returns_forged_rows(tmp_pa
     assert len([message for message in llm.messages if message["role"] == "system"]) == 1
     assert all(forged not in message["content"] for message in llm.messages)
     assert all(malformed not in message["content"] for message in llm.messages)
+    assert all(
+        "OUTGOING_NON_STRING_ROLE_SENTINEL" not in message["content"]
+        for message in llm.messages
+    )
     assert {"role": "user", "content": "legitimate stored user message"} in llm.messages
     assert {"role": "assistant", "content": "legitimate stored assistant message"} in llm.messages
