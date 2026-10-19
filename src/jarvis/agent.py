@@ -7,6 +7,8 @@ from jarvis.memory import MemoryStore
 from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
 from jarvis.project_mesh import ProjectMesh
 
+_CONVERSATION_ROLES = frozenset({"user", "assistant"})
+
 SYSTEM_PROMPT = (
     "You are Jarvis, a helpful personal AI assistant. Be accurate, practical, "
     "and transparent about uncertainty. Understand English, French, Moroccan "
@@ -108,7 +110,18 @@ class JarvisAgent:
                     ),
                 }
             )
-        messages.extend(self.memory.recent_messages(limit=12))
+        # Defense in depth: never let persisted role values control the privilege
+        # level of messages sent to the LLM, even if a custom/legacy store bypasses
+        # MemoryStore's own retrieval filter.
+        history = self.memory.recent_messages(limit=12)
+        messages.extend(
+            message
+            for message in history
+            if isinstance(message, dict)
+            and message.get("role") in _CONVERSATION_ROLES
+            and isinstance(message.get("content"), str)
+            and message["content"].strip()
+        )
         answer = self.llm.chat(messages)
         self.memory.add_message("assistant", answer)
         return answer
