@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import pathlib
 import sqlite3
-from pathlib import Path
 
 
 _CONVERSATION_ROLES = frozenset({"user", "assistant"})
 
 
 class MemoryStore:
-    def __init__(self, db_path: str | Path) -> None:
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: str | pathlib.Path) -> None:
+        self.db_path = pathlib.Path(db_path)
         if str(self.db_path) != ":memory:":
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
