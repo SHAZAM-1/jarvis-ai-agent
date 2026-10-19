@@ -59,9 +59,7 @@ def is_allowed_path(path: str) -> bool:
         return True
     if not normalized.endswith((".py", ".md")):
         return False
-    if normalized.startswith(_ALLOWED_PREFIXES):
-        return True
-    return False
+    return normalized.startswith(_ALLOWED_PREFIXES)
 
 
 def validate_patch(patch: str) -> tuple[bool, str, list[str]]:
