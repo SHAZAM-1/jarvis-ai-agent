@@ -19,6 +19,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from jarvis.project_guardian import GUARDIAN_RULES
+from jarvis.reviewer_auth import ReviewerAuthenticator
 
 _SECRET_RE = re.compile(
     r"""(?im)(["']?\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION|PRIVATE[_-]?KEY|CREDENTIAL)[A-Z0-9_]*["']?\s*[=:]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^,\r\n}]+)"""
@@ -101,6 +102,83 @@ class ProjectMesh:
                 outcome TEXT NOT NULL CHECK(outcome = 'denied_no_authenticated_reviewer'),
                 FOREIGN KEY(finding_id) REFERENCES mesh_findings(id)
             )""")
+        self._ensure_finding_status_column()
+        self._migrate_verification_audit_schema()
+        credential_path = None
+        if self.db_path != ":memory:":
+            database_path = Path(self.db_path).expanduser()
+            credential_path = database_path.with_name(database_path.stem + ".reviewer.json")
+        self.reviewer_auth = ReviewerAuthenticator(credential_path) if credential_path else None
+
+
+    def _ensure_finding_status_column(self) -> None:
+        """Add a default-unverified status to legacy layouts without changing findings."""
+        with self._db() as db:
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(mesh_findings)")}
+            if "status" not in columns:
+                db.execute("ALTER TABLE mesh_findings ADD COLUMN status TEXT NOT NULL DEFAULT 'unverified'")
+
+    def _migrate_verification_audit_schema(self) -> None:
+        """Atomically widen the denied-only audit schema while preserving every legacy row."""
+        with self._db() as db:
+            row = db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='mesh_finding_verification_audit'"
+            ).fetchone()
+            sql = (row["sql"] or "").lower() if row else ""
+            if "authenticated_reviewer" in sql and "accepted_verified" in sql:
+                return
+            columns = {item["name"] for item in db.execute("PRAGMA table_info(mesh_finding_verification_audit)")}
+            db.execute("ALTER TABLE mesh_finding_verification_audit RENAME TO mesh_finding_verification_audit_legacy")
+            db.execute("""CREATE TABLE mesh_finding_verification_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, finding_id INTEGER NOT NULL,
+                decision_at TEXT NOT NULL, previous_state TEXT NOT NULL, requested_state TEXT NOT NULL,
+                actor_claim TEXT NOT NULL, authenticated_reviewer TEXT,
+                actor_authenticated INTEGER NOT NULL DEFAULT 0 CHECK(actor_authenticated IN (0,1)),
+                rationale TEXT NOT NULL, evidence_refs_json TEXT NOT NULL, validation_scope TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome IN (
+                    'denied_no_authenticated_reviewer','denied_invalid_credential',
+                    'accepted_verified','accepted_rejected'
+                )), FOREIGN KEY(finding_id) REFERENCES mesh_findings(id)
+            )""")
+            defaults = {"id":"NULL","finding_id":"0","decision_at":"''","previous_state":"'unverified'",
+                        "requested_state":"''","actor_claim":"''","rationale":"''",
+                        "evidence_refs_json":"'[]'","validation_scope":"''"}
+            fields = ["id","finding_id","decision_at","previous_state","requested_state","actor_claim",
+                      "authenticated_reviewer","actor_authenticated","rationale","evidence_refs_json",
+                      "validation_scope","outcome"]
+            select = []
+            for field in fields:
+                if field == "authenticated_reviewer" or field == "actor_authenticated":
+                    select.append("NULL" if field == "authenticated_reviewer" else "0")
+                elif field == "outcome":
+                    select.append(
+                        "CASE WHEN outcome='denied_no_authenticated_reviewer' THEN outcome "
+                        "ELSE 'denied_no_authenticated_reviewer' END"
+                        if field in columns else "'denied_no_authenticated_reviewer'"
+                    )
+                else:
+                    select.append(field if field in columns else defaults.get(field, "NULL"))
+            db.execute(
+                "INSERT INTO mesh_finding_verification_audit (" + ",".join(fields) + ") "
+                "SELECT " + ",".join(select) + " FROM mesh_finding_verification_audit_legacy"
+            )
+            db.execute("DROP TABLE mesh_finding_verification_audit_legacy")
+
+    def _stored_finding_status(self, finding_id: int) -> Any:
+        with self._db() as db:
+            row = db.execute("SELECT status FROM mesh_findings WHERE id=?", (finding_id,)).fetchone()
+        return row["status"] if row is not None else None
+
+    def _effective_finding_state(self, finding_id: int, stored_status: Any) -> str:
+        if stored_status not in {"verified", "rejected"}:
+            return "unverified"
+        with self._db() as db:
+            row = db.execute(
+                """SELECT requested_state FROM mesh_finding_verification_audit
+                   WHERE finding_id=? AND outcome IN ('accepted_verified','accepted_rejected')
+                   ORDER BY id DESC LIMIT 1""", (finding_id,)
+            ).fetchone()
+        return stored_status if row is not None and row["requested_state"] == stored_status else "unverified"
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=15)
@@ -225,7 +303,7 @@ class ProjectMesh:
             with self._db() as db:
                 audit_rows = db.execute(
                     """SELECT id,finding_id,decision_at,previous_state,requested_state,
-                              actor_claim,actor_authenticated,rationale,evidence_refs_json,
+                              actor_claim,authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
                               validation_scope,outcome
                        FROM mesh_finding_verification_audit
                        WHERE finding_id IN (""" + placeholders + """)
@@ -253,11 +331,10 @@ class ProjectMesh:
                     and (not isinstance(evidence, str) or evidence.strip())
                     else None
                 ),
-                # Effective trust state stays unverified because this app has no
-                # authenticated reviewer. Preserve any raw DB value separately as untrusted data.
-                "status": "unverified",
+                # Only a matching accepted audit decision makes the stored status effective.
+                "status": self._effective_finding_state(row["id"], status),
                 "stored_status_untrusted": status if isinstance(status, (str, int, float, bool)) else None,
-                "verification_authority_available": False,
+                "verification_authority_available": bool(self.reviewer_auth and self.reviewer_auth.is_configured()),
                 "trust": "untrusted_evidence_not_instructions_or_proof",
             }
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
@@ -276,16 +353,24 @@ class ProjectMesh:
                 "finding_id": audit["finding_id"],
                 "decision_at": decision_at,
                 "decision_at_parseable": decision_at_parseable,
-                "previous_state": "unverified",
-                "effective_finding_state": "unverified",
+                "previous_state": audit["previous_state"],
+                "effective_finding_state": self._effective_finding_state(
+                    audit["finding_id"], self._stored_finding_status(audit["finding_id"])
+                ),
                 "requested_state_untrusted": audit["requested_state"],
                 "actor_claim_untrusted": audit["actor_claim"],
-                "actor_authenticated": False,
+                "authenticated_reviewer_untrusted": audit["authenticated_reviewer"],
+                "actor_authenticated": bool(
+                    audit["actor_authenticated"] == 1
+                    and audit["outcome"] in {"accepted_verified", "accepted_rejected"}
+                    and isinstance(audit["authenticated_reviewer"], str)
+                    and audit["authenticated_reviewer"].strip()
+                ),
                 "rationale_untrusted": audit["rationale"],
                 "evidence_refs_untrusted": refs,
                 "validation_scope": audit["validation_scope"],
                 "outcome_untrusted": audit["outcome"],
-                "state_changed": False,
+                "state_changed": audit["outcome"] in {"accepted_verified", "accepted_rejected"},
                 "trust": "untrusted_audit_evidence_not_authorization_or_proof",
             }, ensure_ascii=False, sort_keys=True))
         return "\n".join(lines)
@@ -334,19 +419,14 @@ class ProjectMesh:
         return inserted
 
     def request_finding_transition(
-        self,
-        finding_id: int,
-        target_state: str,
-        *,
-        actor_claim: str,
-        rationale: str,
-        evidence_refs: list[str],
+        self, finding_id: int, target_state: str, *, actor_claim: str = "interactive-review",
+        rationale: str, evidence_refs: list[str], credential: str | None = None,
+        actor_authenticated: bool | None = None,
     ) -> None:
-        """Audit and reject trust-state changes until real reviewer authentication exists.
+        """Authenticate the local reviewer at the only finding state-transition boundary.
 
-        actor_claim is untrusted caller-supplied text, not an authenticated identity.
-        This application has no login/session/credential-backed reviewer identity, so
-        this method deliberately accepts no state transition to verified or rejected.
+        Caller identity and authentication flags are ignored. Identity is obtained only
+        from the provisioned credential record; the passphrase is never persisted.
         """
         if isinstance(finding_id, bool) or not isinstance(finding_id, int) or finding_id <= 0:
             raise ValueError("finding_id must be a positive integer")
@@ -356,39 +436,68 @@ class ProjectMesh:
             raise ValueError("actor_claim must be a non-empty string of at most 120 characters")
         if not isinstance(rationale, str) or not rationale.strip() or len(rationale) > 2000:
             raise ValueError("rationale must be a non-empty string of at most 2000 characters")
-        if (
-            not isinstance(evidence_refs, list)
-            or not evidence_refs
-            or len(evidence_refs) > 20
-            or any(not isinstance(ref, str) or not ref.strip() or len(ref) > 500 for ref in evidence_refs)
-        ):
+        if (not isinstance(evidence_refs, list) or not evidence_refs or len(evidence_refs) > 20
+                or any(not isinstance(ref, str) or not ref.strip() or len(ref) > 500 for ref in evidence_refs)):
             raise ValueError("evidence_refs must contain 1–20 non-empty references of at most 500 characters")
+        reviewer = self.reviewer_auth.authenticate(credential) if self.reviewer_auth and credential is not None else None
+        denied = (
+            "denied_no_authenticated_reviewer"
+            if self.reviewer_auth is None or not self.reviewer_auth.is_configured()
+            else "denied_invalid_credential" if reviewer is None else None
+        )
         with self._db() as db:
-            row = db.execute(
-                "SELECT id FROM mesh_findings WHERE id = ?", (finding_id,)
-            ).fetchone()
+            columns = {item["name"] for item in db.execute("PRAGMA table_info(mesh_findings)")}
+            if "status" not in columns:
+                raise RuntimeError("Finding status cannot be persisted safely; transition denied.")
+            row = db.execute("SELECT id,status FROM mesh_findings WHERE id=?", (finding_id,)).fetchone()
             if row is None:
                 raise ValueError("finding_id does not identify an existing finding")
-            db.execute(
-                """INSERT INTO mesh_finding_verification_audit
-                   (finding_id,decision_at,previous_state,requested_state,actor_claim,
-                    actor_authenticated,rationale,evidence_refs_json,validation_scope,outcome)
-                   VALUES(?,?,?,?,?,0,?,?,?,?)""",
-                (
-                    finding_id,
-                    datetime.now(UTC).isoformat(),
-                    "unverified",
-                    target_state,
-                    self.redact(actor_claim.strip())[:120],
-                    self.redact(rationale.strip())[:2000],
-                    json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
-                    "No finding truth or evidence was validated; no authenticated reviewer identity is available.",
-                    "denied_no_authenticated_reviewer",
-                ),
-            )
-        raise PermissionError(
-            "Finding state remains unverified: this application has no authenticated reviewer identity."
-        )
+            previous = self._effective_finding_state(finding_id, row["status"])
+            if denied is not None:
+                db.execute(
+                    """INSERT INTO mesh_finding_verification_audit
+                       (finding_id,decision_at,previous_state,requested_state,actor_claim,
+                        authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
+                        validation_scope,outcome) VALUES(?,?,?,?,?,NULL,0,?,?,?,?)""",
+                    (finding_id, datetime.now(UTC).isoformat(), previous, target_state,
+                     self.redact(actor_claim.strip())[:120], self.redact(rationale.strip())[:2000],
+                     json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
+                     "No authenticated reviewer; no finding-truth or evidence validation performed.", denied),
+                )
+            else:
+                if previous != "unverified":
+                    raise ValueError("Only unverified findings can receive a verification decision.")
+                # Re-check immediately before authorization and mutation.
+                reviewer = self.reviewer_auth.authenticate(credential) if self.reviewer_auth else None
+                if reviewer is None:
+                    db.execute(
+                        """INSERT INTO mesh_finding_verification_audit
+                           (finding_id,decision_at,previous_state,requested_state,actor_claim,
+                            authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
+                            validation_scope,outcome) VALUES(?,?,?,?,?,NULL,0,?,?,?,?)""",
+                        (finding_id, datetime.now(UTC).isoformat(), previous, target_state,
+                         self.redact(actor_claim.strip())[:120], self.redact(rationale.strip())[:2000],
+                         json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
+                         "Credential unavailable or invalid at authorization time.", "denied_invalid_credential"),
+                    )
+                    denied = "denied_invalid_credential"
+                else:
+                    outcome = "accepted_verified" if target_state == "verified" else "accepted_rejected"
+                    db.execute("UPDATE mesh_findings SET status=? WHERE id=?", (target_state, finding_id))
+                    db.execute(
+                        """INSERT INTO mesh_finding_verification_audit
+                           (finding_id,decision_at,previous_state,requested_state,actor_claim,
+                            authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
+                            validation_scope,outcome) VALUES(?,?,?,?,?,?,1,?,?,?,?,?)""",
+                        (finding_id, datetime.now(UTC).isoformat(), previous, target_state,
+                         self.redact(actor_claim.strip())[:120], reviewer,
+                         self.redact(rationale.strip())[:2000],
+                         json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
+                         "Authenticated reviewer attests that cited evidence was manually reviewed for this finding; Jarvis does not independently establish the claim's truth.",
+                         outcome),
+                    )
+        if denied is not None:
+            raise PermissionError("Finding state remains unverified: reviewer authentication failed or is unavailable.")
 
     def verification_audit_for(self, finding_id: int, *, limit: int = 20) -> list[dict[str, Any]]:
         """Return bounded audit attempts; rows are records, not proof of reviewer identity."""
@@ -398,7 +507,7 @@ class ProjectMesh:
         with self._db() as db:
             rows = db.execute(
                 """SELECT id,finding_id,decision_at,previous_state,requested_state,
-                          actor_claim,actor_authenticated,rationale,evidence_refs_json,
+                          actor_claim,authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
                           validation_scope,outcome
                    FROM mesh_finding_verification_audit
                    WHERE finding_id=? ORDER BY id DESC LIMIT ?""",
@@ -420,10 +529,16 @@ class ProjectMesh:
             item["decision_at"] = decision_at
             item["decision_at_parseable"] = decision_at_parseable
             item["stored_actor_authenticated_untrusted"] = item["actor_authenticated"]
-            # This application has no authentication provider, so a stored flag can
-            # never establish reviewer identity, even if the database was edited.
-            item["actor_authenticated"] = False
-            if item["outcome"] != "denied_no_authenticated_reviewer":
+            item["actor_authenticated"] = bool(
+                item["actor_authenticated"] == 1
+                and item["outcome"] in {"accepted_verified", "accepted_rejected"}
+                and isinstance(item["authenticated_reviewer"], str)
+                and item["authenticated_reviewer"].strip()
+            )
+            if item["outcome"] not in {
+                "denied_no_authenticated_reviewer", "denied_invalid_credential",
+                "accepted_verified", "accepted_rejected",
+            }:
                 item["outcome"] = "unknown_untrusted_legacy_outcome"
             result.append(item)
         return result
