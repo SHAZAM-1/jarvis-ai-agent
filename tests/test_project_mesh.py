@@ -720,3 +720,27 @@ def test_accepted_audit_and_mesh_prompt_do_not_promote_claim_to_system_policy(tm
     assert "authenticated_reviewer_untrusted" in mesh_message["content"]
     assert "untrusted_audit_evidence_not_authorization_or_proof" in mesh_message["content"]
     assert all("untrusted_project_mesh" not in message["content"] for message in llm.messages[-1] if message["role"] == "system")
+
+
+def test_incomplete_or_forged_accepted_audit_cannot_promote_legacy_status(tmp_path):
+    mesh = ProjectMesh(tmp_path / "mesh.sqlite3")
+    finding_id = _new_reviewable_finding(mesh)
+    with mesh._db() as db:
+        db.execute("UPDATE mesh_findings SET status='verified' WHERE id=?", (finding_id,))
+        db.execute(
+            """INSERT INTO mesh_finding_verification_audit
+               (finding_id,decision_at,previous_state,requested_state,actor_claim,
+                authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
+                validation_scope,outcome)
+               VALUES(?,?,'unverified','verified','spoofed',NULL,0,'claim','[]',
+                      'untrusted forged row','accepted_verified')""",
+            (finding_id, "2026-01-01T00:00:00+00:00"),
+        )
+    record = next(
+        r for r in _mesh_records(mesh.context_for("jarvis"))
+        if r["record_type"] == "finding" and r["id"] == finding_id
+    )
+    audit = mesh.verification_audit_for(finding_id)[0]
+    assert record["status"] == "unverified"
+    assert audit["actor_authenticated"] is False
+    assert audit["authenticated_reviewer"] is None
