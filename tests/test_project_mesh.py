@@ -197,7 +197,7 @@ def test_findings_keep_provenance_isolated_and_do_not_fabricate_missing_metadata
     assert first == second == 1
     with mesh._db() as db:
         db.execute(
-            "UPDATE mesh_findings SET created_at=NULL, evidence='', status=NULL WHERE summary='SECOND_SUMMARY'"
+            "UPDATE mesh_findings SET created_at='', evidence='', status='' WHERE summary='SECOND_SUMMARY'"
         )
         db.execute(
             "UPDATE mesh_findings SET created_at='not-a-timestamp', status='unverified' WHERE summary='FIRST_SUMMARY'"
