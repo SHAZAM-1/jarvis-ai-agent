@@ -348,7 +348,7 @@ class ProjectMesh:
         """
         if isinstance(finding_id, bool) or not isinstance(finding_id, int) or finding_id <= 0:
             raise ValueError("finding_id must be a positive integer")
-        if target_state not in {"verified", "rejected"}:
+        if not isinstance(target_state, str) or target_state not in {"verified", "rejected"}:
             raise ValueError("target_state must be 'verified' or 'rejected'")
         if not isinstance(actor_claim, str) or not actor_claim.strip() or len(actor_claim) > 120:
             raise ValueError("actor_claim must be a non-empty string of at most 120 characters")
