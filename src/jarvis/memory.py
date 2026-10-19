@@ -58,12 +58,14 @@ class MemoryStore:
             raise ValueError("limit must be at least 1")
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?",
-                (limit,),
+                """SELECT role, content FROM messages
+                   WHERE role IN (?, ?)
+                   ORDER BY id DESC LIMIT ?""",
+                ("user", "assistant", limit),
             ).fetchall()
-        # Existing databases may contain rows written by older code or outside
-        # this API. Only replay ordinary conversation roles; never trust stored
-        # role values to select an LLM privilege level.
+        # Filter at retrieval, before applying the limit, so legacy/externally
+        # written privileged or malformed rows cannot be replayed or crowd out
+        # legitimate conversation history.
         return [
             {"role": role, "content": content}
             for role, content in reversed(rows)
