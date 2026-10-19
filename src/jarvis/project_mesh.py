@@ -462,7 +462,7 @@ class ProjectMesh:
                     (finding_id, datetime.now(UTC).isoformat(), previous, target_state,
                      self.redact(actor_claim.strip())[:120], self.redact(rationale.strip())[:2000],
                      json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
-                     "No authenticated reviewer; no finding-truth or evidence validation performed.", denied),
+                     "No authenticated reviewer; No finding truth or evidence validation performed.", denied),
                 )
             else:
                 if previous != "unverified":
