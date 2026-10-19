@@ -18,8 +18,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
-from jarvis.project_mesh import ProjectMesh
 from jarvis.owner_policy import (
     FORBIDDEN_ADDITIONS,
     MAX_PATCH_BYTES,
@@ -29,6 +27,8 @@ from jarvis.owner_policy import (
     PROJECT_SCOPE,
     PROTECTED_PATHS,
 )
+from jarvis.project_guardian import GUARDIAN_RULES, ProjectGuardian
+from jarvis.project_mesh import ProjectMesh
 
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?im)^\s*([A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*\s*=\s*)"
@@ -53,7 +53,7 @@ def is_allowed_path(path: str) -> bool:
     pure = PurePosixPath(normalized)
     if pure.is_absolute() or ".." in pure.parts or normalized in PROTECTED_PATHS:
         return False
-    if normalized.startswith(".") or normalized.startswith(".github/"):
+    if normalized.startswith((".", ".github/")):
         return False
     if normalized in _ALLOWED_ROOT_FILES:
         return True
@@ -291,7 +291,7 @@ class SelfDevelopmentManager:
         for path in tracked:
             if not is_allowed_path(path) or path in PROTECTED_PATHS:
                 continue
-            if path.startswith("tests/") or path.startswith("src/jarvis/"):
+            if path.startswith(("tests/", "src/jarvis/")):
                 selected.append(path)
         chunks: list[str] = []
         total = 0
@@ -513,7 +513,7 @@ class SelfDevelopmentManager:
                     "branch before continuing. No reset or clean was performed."
                 )
             return f"Self-development stopped safely: {exc}.{recovery_note}"
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - final fail-safe records unexpected failures.
             self.guardian.record_outcome(
                 "self_development", "Self-development cycle", "failed", type(exc).__name__
             )
