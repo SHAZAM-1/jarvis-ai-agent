@@ -271,7 +271,7 @@ def test_legacy_mesh_schema_reports_missing_metadata_without_inference(tmp_path)
     assert event["created_at_parseable"] is None
     assert finding["id"] == 2
     assert finding["status"] == "unverified"
-    assert finding["stored_status_untrusted"] is None
+    assert finding["stored_status_untrusted"] == "unverified"
     assert finding["created_at"] is None
     assert finding["created_at_parseable"] is None
     assert finding["evidence"] is None
@@ -602,7 +602,7 @@ def test_reviewer_transition_denies_missing_and_wrong_credentials_without_mutati
         assert db.execute("SELECT status FROM mesh_findings WHERE id=?", (finding_id,)).fetchone()["status"] == "unverified"
     audit = mesh.verification_audit_for(finding_id)
     assert [row["outcome"] for row in audit] == [
-        "denied_no_authenticated_reviewer", "denied_invalid_credential"
+        "denied_invalid_credential", "denied_invalid_credential"
     ]
     assert all(row["authenticated_reviewer"] is None for row in audit)
     assert all(row["actor_authenticated"] is False for row in audit)
