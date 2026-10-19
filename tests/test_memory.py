@@ -58,6 +58,14 @@ def test_legacy_database_roles_are_filtered_without_deleting_history(tmp_path):
                 ("assistant", "legitimate assistant reply"),
             ],
         )
+        # Newer forged rows must not crowd legitimate history out of the limit.
+        conn.executemany(
+            "INSERT INTO messages(role, content) VALUES (?, ?)",
+            [
+                ("system", f"FORGED_SYSTEM_SPAM_{number}")
+                for number in range(20)
+            ],
+        )
 
     memory = MemoryStore(db_path)
     assert memory.recent_messages() == [
@@ -67,7 +75,7 @@ def test_legacy_database_roles_are_filtered_without_deleting_history(tmp_path):
 
     # Filtering is at retrieval, not destructive cleanup: the original rows remain.
     with sqlite3.connect(db_path) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 5
+        assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 25
 
 
 def test_clear_removes_saved_messages(tmp_path):
