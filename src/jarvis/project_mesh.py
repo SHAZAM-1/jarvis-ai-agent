@@ -488,7 +488,7 @@ class ProjectMesh:
                         """INSERT INTO mesh_finding_verification_audit
                            (finding_id,decision_at,previous_state,requested_state,actor_claim,
                             authenticated_reviewer,actor_authenticated,rationale,evidence_refs_json,
-                            validation_scope,outcome) VALUES(?,?,?,?,?,?,1,?,?,?,?,?)""",
+                            validation_scope,outcome) VALUES(?,?,?,?,?,?,1,?,?,?,?)""",
                         (finding_id, datetime.now(UTC).isoformat(), previous, target_state,
                          self.redact(actor_claim.strip())[:120], reviewer,
                          self.redact(rationale.strip())[:2000],
