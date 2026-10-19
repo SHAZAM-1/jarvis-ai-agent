@@ -1,7 +1,8 @@
 import sqlite3
 
-from jarvis.memory import MemoryStore
 import pytest
+
+from jarvis.memory import MemoryStore
 
 
 def test_messages_are_saved_and_returned_in_chronological_order(tmp_path):
