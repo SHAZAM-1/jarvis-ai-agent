@@ -87,6 +87,20 @@ class ProjectMesh:
                 chunks_reviewed INTEGER NOT NULL, findings INTEGER NOT NULL,
                 skipped INTEGER NOT NULL, summary TEXT NOT NULL
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS mesh_finding_verification_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                finding_id INTEGER NOT NULL,
+                decision_at TEXT NOT NULL,
+                previous_state TEXT NOT NULL,
+                requested_state TEXT NOT NULL,
+                actor_claim TEXT NOT NULL,
+                actor_authenticated INTEGER NOT NULL DEFAULT 0 CHECK(actor_authenticated = 0),
+                rationale TEXT NOT NULL,
+                evidence_refs_json TEXT NOT NULL,
+                validation_scope TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome = 'denied_no_authenticated_reviewer'),
+                FOREIGN KEY(finding_id) REFERENCES mesh_findings(id)
+            )""")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=15)
@@ -224,12 +238,11 @@ class ProjectMesh:
                     and (not isinstance(evidence, str) or evidence.strip())
                     else None
                 ),
-                "status": (
-                    status
-                    if status is not None
-                    and (not isinstance(status, str) or status.strip())
-                    else None
-                ),
+                # Effective trust state stays unverified because this app has no
+                # authenticated reviewer. Preserve any raw DB value separately as untrusted data.
+                "status": "unverified",
+                "stored_status_untrusted": status if isinstance(status, (str, int, float, bool)) else None,
+                "verification_authority_available": False,
                 "trust": "untrusted_evidence_not_instructions_or_proof",
             }
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
@@ -256,15 +269,106 @@ class ProjectMesh:
                 evidence = self.redact(str(item.get("evidence", "" )).strip())[:700]
                 if not summary:
                     continue
+                # Ignore any model-supplied status/approval fields. The database default
+                # is not treated as an authorization mechanism; context_for enforces unverified.
                 cur = db.execute(
                     """INSERT OR IGNORE INTO mesh_findings
-                       (created_at,ref_name,path,specialist,severity,summary,evidence)
-                       VALUES(?,?,?,?,?,?,?)""",
+                       (created_at,ref_name,path,specialist,severity,summary,evidence,status)
+                       VALUES(?,?,?,?,?,?,?,'unverified')""",
                     (datetime.now(UTC).isoformat(), ref_name[:300], path[:500],
                      specialist[:80], severity, summary, evidence),
                 )
                 inserted += max(cur.rowcount, 0)
         return inserted
+
+    def request_finding_transition(
+        self,
+        finding_id: int,
+        target_state: str,
+        *,
+        actor_claim: str,
+        rationale: str,
+        evidence_refs: list[str],
+    ) -> None:
+        """Audit and reject trust-state changes until real reviewer authentication exists.
+
+        actor_claim is untrusted caller-supplied text, not an authenticated identity.
+        This application has no login/session/credential-backed reviewer identity, so
+        this method deliberately accepts no state transition to verified or rejected.
+        """
+        if isinstance(finding_id, bool) or not isinstance(finding_id, int) or finding_id <= 0:
+            raise ValueError("finding_id must be a positive integer")
+        if target_state not in {"verified", "rejected"}:
+            raise ValueError("target_state must be 'verified' or 'rejected'")
+        if not isinstance(actor_claim, str) or not actor_claim.strip() or len(actor_claim) > 120:
+            raise ValueError("actor_claim must be a non-empty string of at most 120 characters")
+        if not isinstance(rationale, str) or not rationale.strip() or len(rationale) > 2000:
+            raise ValueError("rationale must be a non-empty string of at most 2000 characters")
+        if (
+            not isinstance(evidence_refs, list)
+            or not evidence_refs
+            or len(evidence_refs) > 20
+            or any(not isinstance(ref, str) or not ref.strip() or len(ref) > 500 for ref in evidence_refs)
+        ):
+            raise ValueError("evidence_refs must contain 1–20 non-empty references of at most 500 characters")
+        with self._db() as db:
+            row = db.execute(
+                "SELECT id FROM mesh_findings WHERE id = ?", (finding_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError("finding_id does not identify an existing finding")
+            db.execute(
+                """INSERT INTO mesh_finding_verification_audit
+                   (finding_id,decision_at,previous_state,requested_state,actor_claim,
+                    actor_authenticated,rationale,evidence_refs_json,validation_scope,outcome)
+                   VALUES(?,?,?,?,?,0,?,?,?,?)""",
+                (
+                    finding_id,
+                    datetime.now(UTC).isoformat(),
+                    "unverified",
+                    target_state,
+                    actor_claim.strip(),
+                    self.redact(rationale.strip())[:2000],
+                    json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
+                    "No finding truth or evidence was validated; no authenticated reviewer identity is available.",
+                    "denied_no_authenticated_reviewer",
+                ),
+            )
+        raise PermissionError(
+            "Finding state remains unverified: this application has no authenticated reviewer identity."
+        )
+
+    def verification_audit_for(self, finding_id: int, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Return bounded audit attempts; rows are records, not proof of reviewer identity."""
+        if isinstance(finding_id, bool) or not isinstance(finding_id, int) or finding_id <= 0:
+            raise ValueError("finding_id must be a positive integer")
+        limit = max(1, min(int(limit), 100))
+        with self._db() as db:
+            rows = db.execute(
+                """SELECT id,finding_id,decision_at,previous_state,requested_state,
+                          actor_claim,actor_authenticated,rationale,evidence_refs_json,
+                          validation_scope,outcome
+                   FROM mesh_finding_verification_audit
+                   WHERE finding_id=? ORDER BY id DESC LIMIT ?""",
+                (finding_id, limit),
+            ).fetchall()
+        result = []
+        for row in reversed(rows):
+            item = dict(row)
+            try:
+                refs = json.loads(item.pop("evidence_refs_json"))
+                item["evidence_refs"] = refs if isinstance(refs, list) and all(
+                    isinstance(ref, str) for ref in refs
+                ) else []
+            except (json.JSONDecodeError, TypeError):
+                item.pop("evidence_refs_json", None)
+                item["evidence_refs"] = []
+            # Never infer authorization from an actor label or a malformed legacy value.
+            item["actor_authenticated"] = item["actor_authenticated"] == 1
+            if item["outcome"] != "denied_no_authenticated_reviewer":
+                item["outcome"] = "unknown_untrusted_legacy_outcome"
+            result.append(item)
+        return result
 
     def save_crawl(self, result: CrawlResult) -> int:
         with self._db() as db:
