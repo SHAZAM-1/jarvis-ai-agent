@@ -1,26 +1,44 @@
 # Project Mesh finding-verification lifecycle
 
-## Trust model discovered
+## Trust model and meaning of a decision
 
-Jarvis is a local, single-owner CLI application. The current application has no login, authenticated reviewer identity, session identity, or reviewer credential. A string such as `owner`, `guardian`, or `verified_by` supplied by a caller or model is not proof of identity. The configured local model is not an independent reviewer, and model-generated evidence is not independent verification.
+Jarvis is a local, single-owner CLI application. It has no multi-user account service or operating-system identity broker. A caller-supplied name such as `owner`, `guardian`, or `verified_by`, a model-generated field, a rationale, evidence text, or a stored status is not authentication.
 
-## Implemented lifecycle
+The local reviewer credential authenticates **possession of a passphrase** provisioned by someone at the local interactive terminal. The reviewer label is an audit label bound to that credential; it is not independently verified civil identity. The credential does not establish that a technical claim is true. A `verified` decision means the authenticated credential holder attests that they manually reviewed the cited references for the finding. Jarvis does not independently validate the claim's truth or the quality of the review.
 
-- **`unverified`** is the only effective finding trust state.
-- Finding creation ignores model-supplied status, approval, and reviewer fields. New rows are explicitly written as `unverified` when the schema supports the column.
-- A stored legacy value such as `verified`, `approved`, an unknown string, or a malformed value is not accepted as a trust decision. Serialized context reports effective `status: unverified` and preserves the raw database value separately as `stored_status_untrusted`.
-- Requests to move a finding to `verified` or `rejected` go through `ProjectMesh.request_finding_transition()`. The method validates the ID, requested state, rationale, and evidence references, then records a denial and raises `PermissionError` because the application cannot authenticate a reviewer. It never changes the finding state.
-- A denied attempt is an audit record of a request, not an accepted decision. Its `actor_claim` is caller-supplied and `actor_authenticated` is always false.
-- The audit entry records the finding ID, timestamp, previous effective state, requested state, untrusted actor claim, rationale, evidence references, validation scope, and `denied_no_authenticated_reviewer` outcome.
+## Provisioning and credential storage
 
-No `verified` or `rejected` transition is currently authorized. This is deliberate: a real authenticated reviewer mechanism must exist before the application can claim such a decision. A future implementation may add a verified/rejected state only alongside authentication, authorization, evidence validation rules, and a corresponding audit test suite.
+1. Run Jarvis in an interactive terminal and issue `/reviewer-provision` once.
+2. Enter an audit label and a passphrase of at least 12 characters twice. Passphrase input is hidden. Mismatched confirmations create no credential.
+3. Jarvis stores a random 16-byte salt, a scrypt-derived 32-byte digest, and algorithm/version metadata in a separate `<database-stem>.reviewer.json` file beside the configured SQLite database. It never stores the plaintext passphrase.
+4. The standard-library `hashlib.scrypt` scheme uses `N=16384, r=8, p=1`; verification compares digests with `hmac.compare_digest`. There is no default credential, and an existing credential is never silently overwritten.
+5. File permissions are restricted to owner read/write where supported. Windows ACL behavior varies and must be checked on the host. Permissions do not protect the credential from a process running as the same OS user.
 
-## Persistence and compatibility
+No passphrase is accepted as a CLI argument or environment variable. `/mesh-review <id> <verified|rejected>` requires an interactive terminal, asks for the passphrase without echo, then asks for a rationale and comma-separated evidence references. Non-interactive invocations fail closed. Each decision authenticates again; no long-lived authenticated session is created.
 
-Initialization adds `mesh_finding_verification_audit` with `CREATE TABLE IF NOT EXISTS`. It does not rewrite or delete findings/events and does not backfill actors, timestamps, evidence, or audit history. Existing findings remain intact. Old stored statuses are preserved as raw data but are never promoted into effective trust. Legacy finding tables without a `status` column remain writable through the old insert shape and are serialized as effectively unverified.
+Use `/reviewer-rotate` to change the passphrase after entering the current one and confirming the new one. Use `/reviewer-revoke` to remove the credential after authenticating with the current passphrase. Revocation leaves existing findings and audit records unchanged and disables future accepted decisions. Incorrect credentials do not change finding state.
 
-## Integrity limits
+### Lost or damaged credential
 
-The audit table is ordinary SQLite storage in the same writable application database. The code prevents the normal finding-creation API from recording a successful transition, but it cannot resist a local process or person with direct database write access, arbitrary Python execution, or the ability to modify the application code/database. There is no cryptographic signature, append-only external log, immutable storage, or authenticated human identity. An audit row proves only that the database currently contains a recorded request; it does not prove who submitted it or that the finding is true.
+There is intentionally no unauthenticated recovery command. Stop Jarvis, make a backup of the database, and use the local OS account's file-management access to move the credential file out of the way; then restart Jarvis and explicitly run `/reviewer-provision`. This is an OS-level recovery action, not an authenticated review. It does not change finding statuses or create historical accepted decisions. Anyone able to modify the credential file or application files already has local access outside the application's authentication boundary.
 
-All Mesh records and audit text remain untrusted evidence in prompt construction. The presence of a status, rationale, or evidence reference is never privileged policy or proof.
+## Allowed transitions
+
+- New findings default to `unverified`; model-generated status, approval, or reviewer fields are ignored.
+- Only an explicitly authenticated reviewer can transition an effectively `unverified` finding to `verified` or `rejected`.
+- A finding already effectively `verified` or `rejected` cannot be transitioned again through this API. A future re-review workflow would need its own explicit state machine.
+- Missing, malformed, invalid, or unavailable credentials deny the request. The effective state does not change and the attempt is recorded where the finding exists.
+- Existing database values such as `verified`, `approved`, unknown strings, and malformed legacy values remain untrusted unless the status matches an explicit accepted audit decision produced by the application.
+- The only transition boundary is `ProjectMesh.request_finding_transition()`. Caller-supplied `actor_claim` and `actor_authenticated` values do not authorize the operation; the authenticated reviewer label comes from the credential verifier.
+
+The rationale and evidence references are bounded, redacted, and recorded as review context—not as proof. The reviewer is responsible for determining whether the references actually support the claim.
+
+## Audit migration and integrity
+
+On opening an SEC-07 database, Jarvis transactionally migrates the denied-only audit schema to include the authenticated reviewer label and accepted outcomes. Existing row IDs, finding associations, timestamps, previous/requested states, actor claims, rationale, evidence references, validation scope, and denial outcomes are copied. Historical authentication flags are reset to false and reviewer identity is null; no prior denial is reclassified as accepted. The migration is idempotent and the legacy finding-status migration only adds a default-`unverified` column where absent.
+
+New records distinguish `denied_no_authenticated_reviewer`, `denied_invalid_credential`, `accepted_verified`, and `accepted_rejected`. Accepted entries include the authenticated reviewer label, previous and requested states, decision timestamp, rationale, evidence references, validation scope, and authenticated flag. The SQLite status update and accepted audit entry are written in the same transaction.
+
+The audit database is ordinary writable SQLite storage. It is not cryptographically signed, immutable, or tamper-proof. A person or process with direct database write access, access to modify the credential file, the same OS user's privileges, arbitrary Python execution, or the ability to alter application code can bypass or alter these controls. No protection against privileged local tampering is claimed. The audit trail records the application's decision path; it does not prove who physically used the credential, that evidence is authentic, or that the finding is true.
+
+All Mesh findings and audit records remain untrusted evidence in model prompts, never privileged instructions. Even an accepted review does not convert repository content into system policy.
