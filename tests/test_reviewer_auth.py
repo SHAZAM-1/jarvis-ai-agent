@@ -75,3 +75,28 @@ def test_reviewer_cli_terminal_gate_rejects_noninteractive_input(monkeypatch):
     monkeypatch.setattr(sys, "stdin", io.StringIO("not a terminal"))
     monkeypatch.setattr(sys, "stderr", io.StringIO())
     assert _reviewer_terminal_available() is False
+
+
+def test_cli_provision_confirmation_mismatch_creates_no_credential(tmp_path, monkeypatch):
+    import jarvis.cli
+    from jarvis.reviewer_auth import ReviewerAuthenticator
+
+    auth = ReviewerAuthenticator(tmp_path / "reviewer.json")
+    entries = iter(["first sufficiently long passphrase", "different sufficiently long passphrase"])
+    monkeypatch.setattr(jarvis.cli, "getpass", lambda _prompt: next(entries))
+
+    assert jarvis.cli._provision_reviewer_interactively(auth, "reviewer-label") is False
+    assert not auth.is_configured()
+
+
+def test_cli_provisions_only_after_matching_hidden_passphrases(tmp_path, monkeypatch):
+    import jarvis.cli
+    from jarvis.reviewer_auth import ReviewerAuthenticator
+
+    auth = ReviewerAuthenticator(tmp_path / "reviewer.json")
+    passphrase = "a confirmed sufficiently long passphrase"
+    entries = iter([passphrase, passphrase])
+    monkeypatch.setattr(jarvis.cli, "getpass", lambda _prompt: next(entries))
+
+    assert jarvis.cli._provision_reviewer_interactively(auth, "reviewer-label") is True
+    assert auth.authenticate(passphrase) == "reviewer-label"
