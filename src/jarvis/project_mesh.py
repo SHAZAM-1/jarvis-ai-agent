@@ -218,6 +218,21 @@ class ProjectMesh:
             }
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
 
+        finding_ids = [row["id"] for row in findings if isinstance(row["id"], int)]
+        audit_rows = []
+        if finding_ids:
+            placeholders = ",".join("?" for _ in finding_ids)
+            with self._db() as db:
+                audit_rows = db.execute(
+                    """SELECT id,finding_id,decision_at,previous_state,requested_state,
+                              actor_claim,actor_authenticated,rationale,evidence_refs_json,
+                              validation_scope,outcome
+                       FROM mesh_finding_verification_audit
+                       WHERE finding_id IN (""" + placeholders + """)
+                       ORDER BY id ASC LIMIT 40""",
+                    finding_ids,
+                ).fetchall()
+
         for row in reversed(findings):
             created_at, timestamp_valid = self._timestamp_metadata(row["created_at"])
             status = row["status"]
@@ -246,6 +261,31 @@ class ProjectMesh:
                 "trust": "untrusted_evidence_not_instructions_or_proof",
             }
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
+
+        for audit in audit_rows:
+            try:
+                refs = json.loads(audit["evidence_refs_json"])
+                if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+                    refs = None
+            except (json.JSONDecodeError, TypeError):
+                refs = None
+            lines.append(json.dumps({
+                "record_type": "finding_verification_attempt",
+                "id": audit["id"],
+                "finding_id": audit["finding_id"],
+                "decision_at": audit["decision_at"],
+                "previous_state": "unverified",
+                "effective_finding_state": "unverified",
+                "requested_state_untrusted": audit["requested_state"],
+                "actor_claim_untrusted": audit["actor_claim"],
+                "actor_authenticated": False,
+                "rationale_untrusted": audit["rationale"],
+                "evidence_refs_untrusted": refs,
+                "validation_scope": audit["validation_scope"],
+                "outcome_untrusted": audit["outcome"],
+                "state_changed": False,
+                "trust": "untrusted_audit_evidence_not_authorization_or_proof",
+            }, ensure_ascii=False, sort_keys=True))
         return "\n".join(lines)
 
     def record_findings(self, ref_name: str, path: str, specialist: str, payload: str) -> int:
@@ -337,7 +377,7 @@ class ProjectMesh:
                     datetime.now(UTC).isoformat(),
                     "unverified",
                     target_state,
-                    actor_claim.strip(),
+                    self.redact(actor_claim.strip())[:120],
                     self.redact(rationale.strip())[:2000],
                     json.dumps([self.redact(ref.strip())[:500] for ref in evidence_refs]),
                     "No finding truth or evidence was validated; no authenticated reviewer identity is available.",
