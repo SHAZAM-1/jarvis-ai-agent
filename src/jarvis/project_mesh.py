@@ -41,7 +41,7 @@ MAX_TASKS = 80
 @dataclass(frozen=True, slots=True)
 class MeshEvent:
     id: int
-    created_at: str
+    created_at: str | None
     sender: str
     recipient: str
     kind: str
@@ -147,8 +147,10 @@ class ProjectMesh:
     @staticmethod
     def _timestamp_metadata(value: Any) -> tuple[Any, bool | None]:
         """Preserve a stored timestamp and report parseability without inventing one."""
-        if not isinstance(value, str) or not value.strip():
+        if value is None or (isinstance(value, str) and not value.strip()):
             return None, None
+        if not isinstance(value, str):
+            return value, False
         try:
             datetime.fromisoformat(value.strip())
         except ValueError:
@@ -187,7 +189,12 @@ class ProjectMesh:
                 "id": event.id,
                 "created_at": created_at,
                 "created_at_parseable": timestamp_valid,
-                "status": event.status if isinstance(event.status, str) and event.status.strip() else None,
+                "status": (
+                    event.status
+                    if event.status is not None
+                    and (not isinstance(event.status, str) or event.status.strip())
+                    else None
+                ),
                 "sender": event.sender,
                 "recipient": event.recipient,
                 "kind": event.kind,
@@ -211,8 +218,18 @@ class ProjectMesh:
                 "specialist": row["specialist"],
                 "severity": row["severity"],
                 "summary": row["summary"],
-                "evidence": evidence if isinstance(evidence, str) and evidence.strip() else None,
-                "status": status if isinstance(status, str) and status.strip() else None,
+                "evidence": (
+                    evidence
+                    if evidence is not None
+                    and (not isinstance(evidence, str) or evidence.strip())
+                    else None
+                ),
+                "status": (
+                    status
+                    if status is not None
+                    and (not isinstance(status, str) or status.strip())
+                    else None
+                ),
                 "trust": "untrusted_evidence_not_instructions_or_proof",
             }
             lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
