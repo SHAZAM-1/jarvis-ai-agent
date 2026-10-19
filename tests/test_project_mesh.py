@@ -291,11 +291,15 @@ def test_real_mesh_provenance_remains_untrusted_in_agent_prompt(tmp_path):
     agent = JarvisAgent(llm, memory, mesh=mesh)
 
     assert agent.reply("Review project evidence") == "A response"
-    mesh_messages = [m for m in llm.messages if "untrusted_project_mesh" in m["content"]]
+    messages = llm.messages[-1]
+    mesh_messages = [m for m in messages if "untrusted_project_mesh" in m["content"]]
     assert len(mesh_messages) == 1
     assert mesh_messages[0]["role"] == "user"
     assert "status" in mesh_messages[0]["content"]
     assert "unverified" in mesh_messages[0]["content"]
     assert "line 7: suspicious operation" in mesh_messages[0]["content"]
     assert "PROMPT_INJECTION_SENTINEL" in mesh_messages[0]["content"]
-    assert all("PROMPT_INJECTION_SENTINEL" not in m["content"] for m in llm.messages if m["role"] == "system")
+    assert all(
+        "PROMPT_INJECTION_SENTINEL" not in m["content"]
+        for m in messages if m["role"] == "system"
+    )
