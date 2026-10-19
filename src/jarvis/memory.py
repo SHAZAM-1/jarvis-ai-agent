@@ -6,6 +6,9 @@ import sqlite3
 from pathlib import Path
 
 
+_CONVERSATION_ROLES = frozenset({"user", "assistant"})
+
+
 class MemoryStore:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
@@ -36,8 +39,11 @@ class MemoryStore:
             )
 
     def add_message(self, role: str, content: str) -> int:
-        if role not in {"system", "user", "assistant"}:
-            raise ValueError("role must be system, user, or assistant")
+        # System instructions are constructed by the application, never persisted
+        # as replayable conversation history. Keep the database schema compatible
+        # with existing files, but reject privileged roles at this write boundary.
+        if role not in _CONVERSATION_ROLES:
+            raise ValueError("role must be user or assistant")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("content must be a non-empty string")
         with self._connect() as conn:
@@ -52,9 +58,17 @@ class MemoryStore:
             raise ValueError("limit must be at least 1")
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?",
+                (limit,),
             ).fetchall()
-        return [{"role": role, "content": content} for role, content in reversed(rows)]
+        # Existing databases may contain rows written by older code or outside
+        # this API. Only replay ordinary conversation roles; never trust stored
+        # role values to select an LLM privilege level.
+        return [
+            {"role": role, "content": content}
+            for role, content in reversed(rows)
+            if role in _CONVERSATION_ROLES and isinstance(content, str) and content.strip()
+        ]
 
     def add_lesson(self, lesson: str) -> int:
         """Save an explicit user-approved correction, preference, or lesson."""
