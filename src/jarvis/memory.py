@@ -5,7 +5,6 @@ from __future__ import annotations
 import pathlib
 import sqlite3
 
-
 _CONVERSATION_ROLES = frozenset({"user", "assistant"})
 
 
