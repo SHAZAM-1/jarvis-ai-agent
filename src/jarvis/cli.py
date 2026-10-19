@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from getpass import getpass
 from pathlib import Path
+import sys
 from threading import Event
 
 from jarvis.agent import JarvisAgent
@@ -66,6 +68,10 @@ def _print_help() -> None:
         "  /mesh                       Show shared agent messages and crawler status\n"
         "  /mesh-crawl                 Concurrently review visible project files across Git refs\n"
         "  /mesh-ask <question>        Ask the shared project knowledge mesh for help\n"
+        "  /reviewer-provision         Provision the local reviewer passphrase (first use)\n"
+        "  /reviewer-rotate            Rotate the local reviewer passphrase\n"
+        "  /reviewer-revoke            Revoke the local reviewer credential\n"
+        "  /mesh-review <id> <verified|rejected>  Review a finding interactively\n"
         "  /help                       Show this help\n"
         "  /learn <lesson>             Save a correction or preference for future chats\n"
         "  /lessons                    List saved learning notes\n"
@@ -151,6 +157,71 @@ def main() -> None:
                     print(f"  removed: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 print(f"Jarvis: Cache cleanup stopped safely: {type(exc).__name__}: {exc}")
+            continue
+        if command in {"/reviewer-provision", "/reviewer-rotate", "/reviewer-revoke", "/mesh-review"}:
+            if not (sys.stdin.isatty() and sys.stderr.isatty()):
+                print("Jarvis: Reviewer operations require an interactive terminal; no action was taken.")
+                continue
+            auth = mesh.reviewer_auth
+            if auth is None:
+                print("Jarvis: Reviewer credentials are unavailable for an in-memory database.")
+                continue
+            try:
+                if command == "/reviewer-provision":
+                    if auth.is_configured():
+                        print("Jarvis: A reviewer credential already exists. Use /reviewer-rotate.")
+                        continue
+                    reviewer_label = input("Reviewer label (audit label, not identity proof): ").strip()
+                    passphrase = getpass("New reviewer passphrase (12+ characters): ")
+                    confirmation = getpass("Confirm reviewer passphrase: ")
+                    if passphrase != confirmation:
+                        print("Jarvis: Passphrases did not match; no credential was created.")
+                        continue
+                    auth.provision(reviewer_label, passphrase)
+                    print("Jarvis: Reviewer credential provisioned. Keep the passphrase private.")
+                elif command == "/reviewer-rotate":
+                    current = getpass("Current reviewer passphrase: ")
+                    new = getpass("New reviewer passphrase (12+ characters): ")
+                    confirmation = getpass("Confirm new reviewer passphrase: ")
+                    if new != confirmation:
+                        print("Jarvis: Passphrases did not match; credential unchanged.")
+                        continue
+                    auth.rotate(current, new)
+                    print("Jarvis: Reviewer passphrase rotated.")
+                elif command == "/reviewer-revoke":
+                    current = getpass("Current reviewer passphrase: ")
+                    auth.revoke(current)
+                    print("Jarvis: Reviewer credential revoked. Finding decisions remain in the audit history.")
+                else:
+                    parts = argument.split()
+                    if len(parts) != 2:
+                        print("Jarvis: Usage: /mesh-review <numeric finding ID> <verified|rejected>")
+                        continue
+                    try:
+                        finding_id = int(parts[0])
+                    except ValueError:
+                        print("Jarvis: Finding ID must be numeric.")
+                        continue
+                    target = parts[1].lower()
+                    if target not in {"verified", "rejected"}:
+                        print("Jarvis: Target must be 'verified' or 'rejected'.")
+                        continue
+                    passphrase = getpass("Reviewer passphrase: ")
+                    rationale = input("Review rationale (what you checked): ").strip()
+                    evidence_text = input("Evidence references (comma-separated): ").strip()
+                    evidence_refs = [item.strip() for item in evidence_text.split(",") if item.strip()]
+                    mesh.request_finding_transition(
+                        finding_id, target, actor_claim="interactive-cli",
+                        rationale=rationale, evidence_refs=evidence_refs, credential=passphrase,
+                    )
+                    print(
+                        f"Jarvis: Finding #{finding_id} marked {target}. This records your review decision; "
+                        "Jarvis has not independently established the claim's truth."
+                    )
+            except PermissionError:
+                print("Jarvis: Reviewer authentication failed or is unavailable; no finding state changed.")
+            except (OSError, ValueError, RuntimeError) as exc:
+                print(f"Jarvis: Reviewer operation stopped safely ({type(exc).__name__}).")
             continue
         if command in {"/mesh", "/mesh-crawl", "/mesh-ask"}:
             if command == "/mesh":
