@@ -592,12 +592,14 @@ def test_reviewer_transition_denies_missing_and_wrong_credentials_without_mutati
             finding_id, "verified", actor_claim="owner", actor_authenticated=True,
             rationale="I looked at it.", evidence_refs=["src/review.py"],
         )
-    with pytest.raises(PermissionError):
+    wrong_passphrase = "wrong passphrase for jarvis"
+    with pytest.raises(PermissionError) as denied:
         mesh.request_finding_transition(
             finding_id, "verified", actor_claim="owner", actor_authenticated=True,
             rationale="I looked at it.", evidence_refs=["src/review.py"],
-            credential="wrong passphrase for jarvis",
+            credential=wrong_passphrase,
         )
+    assert wrong_passphrase not in str(denied.value)
     with mesh._db() as db:
         assert db.execute("SELECT status FROM mesh_findings WHERE id=?", (finding_id,)).fetchone()["status"] == "unverified"
     audit = mesh.verification_audit_for(finding_id)
