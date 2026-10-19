@@ -497,7 +497,7 @@ class ProjectMesh:
                          outcome),
                     )
         if denied is not None:
-            raise PermissionError("Finding state remains unverified: reviewer authentication failed or is unavailable.")
+            raise PermissionError("Finding state remains unverified: no authenticated reviewer identity or valid credential was established.")
 
     def verification_audit_for(self, finding_id: int, *, limit: int = 20) -> list[dict[str, Any]]:
         """Return bounded audit attempts; rows are records, not proof of reviewer identity."""
