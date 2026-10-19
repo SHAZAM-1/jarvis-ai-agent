@@ -20,6 +20,7 @@ def test_provision_stores_salted_hash_not_plaintext(tmp_path):
     assert "correct horse battery staple" not in path.read_text(encoding="utf-8")
     assert auth.authenticate("correct horse battery staple") == "local-reviewer"
     assert auth.authenticate("wrong passphrase value") is None
+    assert auth.authenticate("x" * 1025) is None
 
 
 def test_provision_requires_long_passphrase_and_never_overwrites(tmp_path):
