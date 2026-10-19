@@ -18,6 +18,12 @@ def test_provision_stores_salted_hash_not_plaintext(tmp_path):
     assert len(bytes.fromhex(stored["salt"])) == 16
     assert len(bytes.fromhex(stored["digest"])) == 32
     assert "correct horse battery staple" not in path.read_text(encoding="utf-8")
+    if __import__("os").name != "nt":
+        import stat
+        assert stat.S_IMODE(path.stat().st_mode) & 0o077 == 0
+        path.chmod(0o644)
+        assert auth.authenticate("correct horse battery staple") is None
+        path.chmod(0o600)
     assert auth.authenticate("correct horse battery staple") == "local-reviewer"
     assert auth.authenticate("wrong passphrase value") is None
     assert auth.authenticate("x" * 1025) is None
