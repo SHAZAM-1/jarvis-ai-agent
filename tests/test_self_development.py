@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
-from jarvis.owner_policy import OWNER_TRUST_POLICY, PROTECTED_PATHS, PROJECT_SCOPE
+from jarvis.owner_policy import OWNER_TRUST_POLICY, PROJECT_SCOPE, PROTECTED_PATHS
 from jarvis.self_development import (
     SelfDevelopmentManager,
     SelfDevelopmentState,
