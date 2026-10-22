@@ -158,6 +158,12 @@ python -m pytest
 6. Safe self-maintenance: propose one small patch per 24 hours, restrict changes to allowlisted code/tests/docs, run fixed quality and test gates, request a second-pass model review, open a PR, and auto-merge only after green required CI and GitHub policy checks. Protected policy/configuration/dependency/workflow files remain off-limits; failed checks must never merge.
 7. Add Windows startup/task scheduling only after local verification and explicit user opt-in.
 
+### Deferred future phase — cybersecurity and reverse engineering
+
+**Status: `DEFERRED — WAITING FOR STABILITY GATE`.** This future capability must not be implemented during the current stability work. The stability gate requires measured target-machine RAM/CPU/latency, repeatable task-quality evidence, regression and recovery checks, and independent verification; passing CI alone is insufficient. The requested `docs/PROJECT_TASK_MASTER_AUDIT.md` was not found on the repository's current remote branches, so its exact task IDs/order must be reconciled from the owner's local source before updating the authoritative table. The current seven-item roadmap above is preserved unchanged.
+
+The proposed future work (provisional IDs FUTURE-CS-01 through FUTURE-CS-07) and detailed dependencies, safety boundaries, acceptance evidence, and current audit findings are documented in [`docs/ROADMAP_AUDIT_AND_DEFERRED_CYBERSECURITY_PHASE.md`](docs/ROADMAP_AUDIT_AND_DEFERRED_CYBERSECURITY_PHASE.md). Recording the phase is not authorization to activate it.
+
 No phase is considered complete until tests and practical checks are verified. Trust and reputation cannot be guaranteed by automation; the goal is a small number of honest, relevant contributions rather than engagement manipulation.
 
 
